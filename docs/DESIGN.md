@@ -590,6 +590,20 @@ Uses:
   logistic regression or fastText). Later, that classifier can be applied to
   the *whole* URL index to find hiking posts on domains the graph missed.
 
+### First spot check (site-urls run 4, 2026-11-07)
+
+Report: [`data/reports/stage7_spotcheck_site-urls-run-4.md`](../data/reports/stage7_spotcheck_site-urls-run-4.md).
+Tools: [`scripts/sample_candidates.py`](../scripts/sample_candidates.py)
+(stratified sample) and [`cmd/warcfetch`](../cmd/warcfetch/main.go) (fetches
+WARC records by pointer and extracts the title and text).
+
+**Weighted precision of the 2.0M candidate URLs is ~16%** (13% for
+specific trails/destinations in the US/Canada). Pages from `hiking` sites
+without a hiking slug, half the list, are ~3% relevant. About 31% of pages
+are junk (attachments, search URLs, bot checks), and real-estate, RV and
+shop pages slip through. Cheap URL rules get to ~35% while keeping ~84% of
+good pages. Going further needs page content.
+
 ## Stage 8: Measure recall with WET samples
 
 The graph-based funnel can't see blogs that don't link to our hubs. To measure
@@ -649,7 +663,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 7: Content spot checks | ⬜ not started | |
+| 7: Content spot checks | 🟨 first check | 200 labelled pages: ~16% precision; URL rules → ~35%; content needed beyond that |
 | 8: WET recall sample | ⬜ not started | |
 
 ## Open questions
