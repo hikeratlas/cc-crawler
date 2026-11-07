@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Fit the page-relevance model (logistic regression over page_features.py)
-on hand-labelled spot-check pages, report held-out precision/recall, and
-save the weights as JSON. Stdlib only.
+"""Fit a page model (logistic regression over page_features.py) on
+hand-labelled spot-check pages, report held-out precision/recall, and save
+the weights as JSON. Stdlib only.
 
-A page counts as relevant ("broad") if it's about a specific trail, hike,
-destination or national park in the US/Canada (topic T, geo U), or general
-hiking content not clearly elsewhere (topic H, geo U or ?).
+--target relevant (default): a page counts as relevant ("broad") if it's
+about a specific trail, hike, destination or national park in the US/Canada
+(topic T, geo U), or general hiking content not clearly elsewhere (topic H,
+geo U or ?).
+
+--target personal: on hiking content pages (topic T or H, >= 100 words),
+whether the page reads as written by an individual (kind P) rather than an
+organisation or business (kind C).
 
 Usage:
   scripts/train_page_model.py --labels A.tsv --pages A.jsonl [--labels B.tsv --pages B.jsonl] \
@@ -20,7 +25,7 @@ import random
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from page_features import features  # noqa: E402
+from page_features import FEATURES  # noqa: E402
 
 
 def relevant(r):
@@ -53,13 +58,18 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--holdout", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--target", choices=sorted(FEATURES), default="relevant")
     args = ap.parse_args()
 
     rows = []
     for lab_path, page_path in zip(args.labels, args.pages):
         labels = {int(r["idx"]): r for r in csv.DictReader(open(lab_path), delimiter="\t")}
         for i, line in enumerate(open(page_path)):
-            rows.append((features(json.loads(line)), 1 if relevant(labels[i]) else 0))
+            page, lab = json.loads(line), labels[i]
+            if args.target == "relevant":
+                rows.append((FEATURES["relevant"](page), 1 if relevant(lab) else 0))
+            elif lab["topic"] in ("T", "H") and page["words"] >= 100:
+                rows.append((FEATURES["personal"](page), 1 if lab["kind"] == "P" else 0))
     keys = sorted(rows[0][0])
     rnd = random.Random(args.seed)
     rnd.shuffle(rows)
@@ -69,13 +79,13 @@ def main():
     std = {k: (math.sqrt(sum((r[0][k] - mean[k]) ** 2 for r in train) / len(train)) or 1.0) for k in keys}
     norm = lambda f: [(f[k] - mean[k]) / std[k] for k in keys]
     w, b = fit([norm(f) for f, _ in train], [y for _, y in train])
-    model = {"bias": b, "weights": dict(zip(keys, w)), "mean": mean, "std": std,
+    model = {"target": args.target, "bias": b, "weights": dict(zip(keys, w)), "mean": mean, "std": std,
              "trained_on": len(train), "base_rate": sum(y for _, y in rows) / len(rows)}
 
     def prob(f):
         return 1 / (1 + math.exp(-(b + sum(a * c for a, c in zip(w, norm(f))))))
 
-    print(f"{len(rows)} labelled pages ({sum(y for _, y in rows)} relevant); train {len(train)}, held out {len(test)}")
+    print(f"{len(rows)} labelled pages ({sum(y for _, y in rows)} positive for '{args.target}'); train {len(train)}, held out {len(test)}")
     print("weights (standardised):", ", ".join(f"{k} {v:+.2f}" for k, v in sorted(zip(keys, w), key=lambda kv: -abs(kv[1]))))
     print("held-out precision / recall by threshold:")
     total = sum(y for _, y in test)
@@ -83,7 +93,6 @@ def main():
         sel = [y for f, y in test if prob(f) >= t]
         tp = sum(sel)
         print(f"  p >= {t:.1f}: keeps {len(sel):3d}/{len(test)}, precision {tp / max(1, len(sel)):.0%}, recall {tp / max(1, total):.0%}")
-    model["holdout"] = {str(t): None for t in ()}
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w") as f:
         json.dump(model, f, indent=2, sort_keys=True)

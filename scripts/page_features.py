@@ -34,6 +34,10 @@ OTHER = re.compile(r"\b(mountain bik\w*|mtb|bikes?|biking|cycling|ski(?:ing|er|e
                     r"rv|campground|hookups?|fishing|anglers?|hunting|hunters?|golf|kayak\w*|atv|ohv|4x4|"
                     r"jeep|horseback|equestrian|climbing route)\b")
 FIRST = re.compile(r"\b(i|we|my|our|me|us)\b")
+SINGULAR = re.compile(r"\b(i|my|me)\b")
+AFFILIATE = re.compile(r"\b(affiliate links?|earn (?:a )?(?:small )?commission|as an amazon associate)\b")
+BUSINESS = re.compile(r"\b(book now|our team|our guides|guided|tours?|reservations?|inc\.?|llc|company|call us|contact us|"
+                      r"pricing|rates|members?hip|donate|staff|visitors? center)\b")
 
 
 def features(page):
@@ -60,8 +64,27 @@ def features(page):
     }
 
 
+def kind_features(page):
+    """Features for whether a page reads as written by an individual (personal
+    blog) rather than an organisation or business."""
+    t = ((page.get("title") or "") + " " + (page.get("text") or "")).lower()
+    n = max(1, len(t.split()))
+    return {
+        "first_person": min(10.0, 100.0 * len(FIRST.findall(t)) / n),
+        "singular": min(10.0, 100.0 * len(SINGULAR.findall(t)) / n),
+        "log_affiliate": math.log1p(len(AFFILIATE.findall(t))),
+        "log_business": math.log1p(len(BUSINESS.findall(t))),
+        "log_commerce": math.log1p(len(COMMERCE.findall(t))),
+        "log_words": math.log1p(n),
+    }
+
+
+FEATURES = {"relevant": features, "personal": kind_features}
+
+
 def score(page, model):
-    """Probability that the page is relevant, from a train_page_model.py model."""
-    f = features(page)
+    """Model probability for a page (relevant, or personal, depending on the
+    model's target), from a train_page_model.py model."""
+    f = FEATURES[model.get("target", "relevant")](page)
     z = model["bias"] + sum(model["weights"][k] * (f[k] - model["mean"][k]) / model["std"][k] for k in model["weights"])
     return 1.0 / (1.0 + math.exp(-z))

@@ -665,6 +665,31 @@ outputs in the `site-content-run-1` release. ~43k pages fetched in 49 min
   short or low-scoring pages, so a page-level pass (fetch and score every
   remaining page) is the obvious next filter.
 
+### Unbiased check of the final list, and the page pass (2026-11-07)
+
+- **Fresh sample of 150 pages from the site-content-run-1 list** (no
+  overlap with earlier labels; `data/eval/spotcheck/site-content-run-1_labels.tsv`):
+  **63% ± 8% precision** (core 53%), matching the 64% estimate. A third of
+  the relevant pages are personal.
+- Page model retrained on all **650 labels**. Held out (196 pages, 5
+  splits): at p ≥ 0.5, precision 68–82% and recall 63–79%. Trained on the
+  first 500 labels only and tested on the 150 unseen final-list pages, a
+  page filter at **p ≥ 0.3 lifts precision 62% → 73% while keeping 92% of
+  relevant pages** (p ≥ 0.4: 77% / 85%).
+- **Site kind:** `train_page_model.py --target personal` fits a second
+  model on hiking content pages (kind P vs C): first-person and singular
+  pronouns, affiliate disclosures (+), business and commerce terms (−). Per
+  page it is weak (accuracy 71–85% against a 66–72% baseline; personal recall
+  30–60%), so it's used only as a per-site average: `site_kind` is
+  personal when the mean personal score of a site's kept pages is ≥ 0.5.
+  Checked against the authorship labels in `known_blogs.csv` in the report.
+- **Page pass** ([`scripts/page_pass.py`](../scripts/page_pass.py),
+  [`page-pass`](../.github/workflows/page-pass.yml) workflow): fetch every
+  remaining candidate page (324k, 16 partitions keeping each site
+  together), score relevance and personal-ness, and keep pages at p ≥ 0.3.
+  Publishes the final page list, a site table with `site_kind`, and the
+  fetched page text, ready for the richer extraction later.
+
 ## Stage 8: Measure recall with WET samples
 
 The graph-based funnel can't see blogs that don't link to our hubs. To measure
@@ -724,7 +749,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 7: Content spot checks | ✅ site-content run 1 | 323,762 URLs from 4,403 sites, ~64% precision (est.) |
+| 7: Content spot checks | 🟨 page pass | site-content run 1: 324k URLs, 63% ± 8% (measured); page pass running |
 | 8: WET recall sample | ⬜ not started | |
 
 ## Open questions
