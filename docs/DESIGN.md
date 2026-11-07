@@ -604,6 +604,41 @@ are junk (attachments, search URLs, bot checks), and real-estate, RV and
 shop pages slip through. Cheap URL rules get to ~35% while keeping ~84% of
 good pages. Going further needs page content.
 
+### URL rules, page model, and site-content pass (2026-11-07)
+
+- **URL rules** ([`scripts/urlrules.py`](../scripts/urlrules.py), used by
+  `site_report.py` and [`scripts/filter_candidates.py`](../scripts/filter_candidates.py)):
+  only slug-matching pages from any site; drop URLs with query strings,
+  real-estate paths/sites, shop paths and image-attachment slugs. On the
+  first labelled sample they drop 47 bad pages and no good ones. Applied to
+  run 4: **2.0M → 845k URLs from 8,933 sites**. A fresh labelled sample of
+  300 from the filtered list measured **39% precision** (core 31%), up
+  from 16%.
+- **Text extraction** in `cmd/warcfetch` now drops `<select>` dropdowns and
+  link-list menus (≥ 6 items, ≥ 80% links). Menus full of "hikes by state"
+  were making image-attachment pages look like hiking content.
+- **Page model** ([`scripts/page_features.py`](../scripts/page_features.py),
+  [`scripts/train_page_model.py`](../scripts/train_page_model.py),
+  [`data/models/page_model.json`](../data/models/page_model.json)): a
+  stdlib logistic regression over 11 text features. The strongest are
+  hiking-term count (+), other-activity terms (−: biking, skiing, RV,
+  fishing, hunting…), non-US place terms (−), commerce terms (−),
+  distances in miles/feet (+) and first-person voice (+). Trained on the
+  500 labelled pages (70/30 split). Held-out precision/recall varies a lot
+  between splits (150 test pages): at p ≥ 0.5, precision 57–83% and recall
+  47–76%, so roughly **65–70% precision at 60–65% recall per page**. The
+  base rate is 30%.
+- To retrain: re-fetch the labelled pages with
+  `warcfetch -in data/eval/spotcheck/<file>_labels.tsv -out <file>.jsonl`.
+  The label files carry WARC pointers, so no third-party page text is
+  stored in the repo. Then run `train_page_model.py`.
+- **Site-content pass** ([`scripts/site_content.py`](../scripts/site_content.py),
+  [`site-content`](../.github/workflows/site-content.yml) workflow): fetch
+  up to 5 random filtered candidates per site (~43k pages), score them,
+  and keep a site when the mean relevance ≥ 0.35. Averaging over pages
+  smooths out the per-page noise. The output is the final candidate list
+  (the filtered candidates of kept sites).
+
 ## Stage 8: Measure recall with WET samples
 
 The graph-based funnel can't see blogs that don't link to our hubs. To measure
@@ -663,7 +698,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 7: Content spot checks | 🟨 first check | 200 labelled pages: ~16% precision; URL rules → ~35%; content needed beyond that |
+| 7: Content spot checks | 🟨 site-content pass | 500 labelled pages; URL rules → 39%; page model; per-site content judgement |
 | 8: WET recall sample | ⬜ not started | |
 
 ## Open questions

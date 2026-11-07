@@ -154,7 +154,34 @@ var (
 	reTag     = regexp.MustCompile(`(?s)<[^>]*>`)
 	reSpace   = regexp.MustCompile(`[ \t\r\f\v]+`)
 	reLines   = regexp.MustCompile(`\n\s*\n+`)
+	reList    = regexp.MustCompile(`(?is)<(?:ul|ol)\b[^>]*>.*?</(?:ul|ol)>`)
+	reSelect  = regexp.MustCompile(`(?is)<select\b.*?</select>`)
+	reLI      = regexp.MustCompile(`(?i)<li\b`)
+	reA       = regexp.MustCompile(`(?i)<a\b`)
 )
+
+// dropMenus removes <select> dropdowns and link lists that look like
+// navigation: <ul>/<ol> elements with at least six items, nearly all of
+// them links. Runs a few passes so nested menus unwind.
+func dropMenus(doc string) string {
+	doc = reSelect.ReplaceAllString(doc, " ")
+	for pass := 0; pass < 4; pass++ {
+		changed := false
+		doc = reList.ReplaceAllStringFunc(doc, func(m string) string {
+			items := len(reLI.FindAllStringIndex(m, -1))
+			links := len(reA.FindAllStringIndex(m, -1))
+			if items >= 6 && links*10 >= items*8 {
+				changed = true
+				return " "
+			}
+			return m
+		})
+		if !changed {
+			break
+		}
+	}
+	return doc
+}
 
 // extract returns the title, meta description, and readable text of an HTML
 // page. It prefers the <article> or <main> element when there is one.
@@ -165,7 +192,7 @@ func extract(doc string) (title, desc, text string) {
 	if m := reDesc.FindStringSubmatch(doc); m != nil {
 		desc = clean(html.UnescapeString(m[1]))
 	}
-	body := reDropAll.ReplaceAllString(doc, " ")
+	body := dropMenus(reDropAll.ReplaceAllString(doc, " "))
 	if m := reMain.FindStringSubmatch(body); m != nil && len(m[2]) > 500 {
 		body = m[2]
 	}

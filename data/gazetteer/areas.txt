@@ -1,0 +1,69 @@
+# Well-known US/Canada hiking areas and ranges not covered by regions.txt or
+# national_parks.txt. Used as US/Canada place evidence in page text.
+adirondacks
+adirondack
+catskills
+white mountains
+green mountains
+berkshires
+poconos
+blue ridge
+smoky mountains
+smokies
+appalachian trail
+pacific crest trail
+continental divide trail
+sierra nevada
+high sierra
+cascades
+north cascades
+olympic peninsula
+columbia river gorge
+mount hood
+mount rainier
+mount st. helens
+mount shasta
+mount whitney
+rocky mountains
+front range
+san juan mountains
+wind river range
+tetons
+bighorn mountains
+black hills
+uinta mountains
+wasatch
+sawtooth mountains
+bitterroot
+ozarks
+ouachita
+hill country
+big sur
+lake tahoe
+mojave
+sonoran desert
+red rock
+sedona
+moab
+superstition mountains
+san gabriel mountains
+santa monica mountains
+gold coast
+upper peninsula
+boundary waters
+north shore
+kananaskis
+canadian rockies
+lake louise
+whistler
+squamish
+okanagan
+vancouver island
+sea to sky
+algonquin
+bruce trail
+niagara escarpment
+cape breton
+gaspé
+laurentians
+muskoka

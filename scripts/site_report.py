@@ -26,8 +26,8 @@ and its path has no non-English locale prefix (/de/, /fr-ca/, …). Non-English
 pages are dropped before anything else is measured.
 
 Verdicts (first-cut thresholds, see DESIGN.md Stage 4):
-  hiking          keep every English content page
-  mixed           keep only pages whose slug matches
+  hiking          keep English content pages whose slug matches
+  mixed           same (the verdict still records how on-topic the site is)
   drifted         newest crawl is mostly new URLs, spans >= 3 sections of the
                   site, and is far less on-topic than older crawls (typically
                   an expired domain): keep matching pages from before
@@ -42,6 +42,9 @@ import re
 import sys
 from collections import Counter, defaultdict
 from urllib.parse import urlsplit
+
+sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+import urlrules  # noqa: E402  (shared with filter_candidates.py)
 
 csv.field_size_limit(sys.maxsize)
 
@@ -230,10 +233,11 @@ def score(args):
         if verdict not in KEEP:
             continue
         for p, f in feats:
-            if verdict == "hiking":
-                if f["other"]:
-                    continue
-            elif not f["match"]:
+            # Only pages whose slug matches: on `hiking` sites, the other pages
+            # were ~3% relevant in the spot check (DESIGN.md, Stage 7).
+            if not f["match"]:
+                continue
+            if urlrules.drop_reason(p[4], site):
                 continue
             if verdict == "drifted" and newest in p[9] and len(p[9]) == 1:
                 continue
@@ -287,7 +291,7 @@ def report(args):
     if args.note:
         w(args.note + "\n")
     vc = Counter(r["verdict"] for r in rows)
-    meaning = {"hiking": "keep every English content page", "mixed": "keep slug-matching pages only",
+    meaning = {"hiking": "mostly hiking slugs; keep slug-matching pages", "mixed": "some hiking slugs; keep slug-matching pages",
                "drifted": "newest crawl is new, off-topic URLs (expired domain?); keep older matching pages",
                "shop": "≥ 25% commerce paths, more than hiking paths",
                "gear": "≥ 45% gear-review paths (best-, -review, boots, tents…)",

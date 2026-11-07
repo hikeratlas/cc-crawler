@@ -1,0 +1,128 @@
+# Stage 7: judge each kept site by the content of a few of its pages.
+#
+# Takes the candidate URLs from a site-urls release, applies the current URL
+# rules (scripts/urlrules.py), fetches up to N random candidate pages per site
+# straight from Common Crawl's WARC files (cmd/warcfetch), scores them with
+# the page model (data/models/page_model.json), and keeps or drops whole
+# sites. Publishes the final candidate list as a site-content-run-<n> release.
+# All jobs run on Arm runners. See docs/DESIGN.md, Stage 7.
+name: site-content
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_urls_release:
+        description: "site-urls release to take candidates from"
+        default: "site-urls-run-4"
+        required: true
+      per_site:
+        description: "Pages to fetch per site"
+        default: "5"
+        required: true
+      partitions:
+        description: "Parallel fetch jobs"
+        default: "8"
+        required: true
+      site_threshold:
+        description: "Keep a site when its pages' mean relevance is at least this"
+        default: "0.35"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # read the source release, create the site-content-run-<n> release
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Filter candidates and sample pages per site
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.site_urls_release }}" --pattern 'candidates-part-*.tsv.gz' --dir cand
+          python3 -I scripts/filter_candidates.py --candidates 'cand/*.tsv.gz' --out-dir filtered
+          python3 -I scripts/site_content.py sample --candidates 'filtered/*.tsv.gz' \
+            --per-site "${{ inputs.per_site }}" --partitions "${{ inputs.partitions }}" --out-dir plan
+          echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.partitions }}))))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: content-plan
+          path: plan/
+          retention-days: 30
+
+  fetch:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: content-plan
+          path: plan/
+      - name: Show this runner's public IP
+        run: |
+          echo "public IP: $(curl -s -m 10 https://checkip.amazonaws.com || echo unknown)"
+      - name: Build
+        run: go build -o warcfetch ./cmd/warcfetch
+      - name: Fetch sampled pages from WARC files
+        run: |
+          mkdir -p out
+          ./warcfetch -in "plan/sample-${{ matrix.part }}.tsv" -out "out/pages-${{ matrix.part }}.jsonl" -max-text 8000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pages-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  score:
+    needs: fetch
+    if: ${{ !cancelled() }}   # score whichever partitions succeeded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pages-*
+          path: pages/
+          merge-multiple: true
+      - name: Score sites and write the final candidate list
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.site_urls_release }}" --pattern 'candidates-part-*.tsv.gz' --dir cand
+          python3 -I scripts/filter_candidates.py --candidates 'cand/*.tsv.gz' --out-dir filtered
+          python3 -I scripts/site_content.py score --pages 'pages/*.jsonl' --candidates 'filtered/*.tsv.gz' \
+            --site-threshold "${{ inputs.site_threshold }}" --out-dir out
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-content-report
+          path: out/
+          retention-days: 30
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="site-content-run-${{ github.run_number }}"
+          gh release create "$tag" --title "Site content (run ${{ github.run_number }})" \
+            --notes "Candidates from ${{ inputs.site_urls_release }} after URL rules; sites judged by ${{ inputs.per_site }} fetched pages each (keep if mean relevance >= ${{ inputs.site_threshold }}). See report.md." \
+            --target "$GITHUB_SHA"
+          gh release upload "$tag" out/report.md out/site_content.tsv.gz out/candidates.tsv.gz
