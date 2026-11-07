@@ -248,6 +248,42 @@ Full report: [`data/reports/stage2_cc-main-2026-jul-aug-sep.md`](../data/reports
 - nps.gov has by far the highest in-degree (101k linking domains). Its idf
   already discounts it, but it is the main source of single-hub noise.
 
+### Union of five releases, 2022–2026 (graph-seeds run 2, 2026-11-07)
+
+Full report: [`data/reports/stage2_union_2022-2026.md`](../data/reports/stage2_union_2022-2026.md).
+Outputs: the `graph-seeds-run-2` GitHub release. The run took 17 min on Arm
+runners, two releases at a time, ~6.5–9 min each.
+
+| release | domains ≥ 2 hubs | known blogs crawled | known blogs ≥ 2 hubs |
+|---|---:|---:|---:|
+| 2026-jul-aug-sep | 35,034 | 21/33 | 17/33 |
+| 2025-may-jun-jul | 34,589 | 25/33 | 23/33 |
+| 2024-may-jun-jul | 40,170 | 26/33 | 25/33 |
+| 2023-may-sep-nov | 42,411 | 28/33 | 28/33 |
+| 2022-may-jun-aug | 41,659 | 28/33 | 28/33 |
+| **union** | **88,780** | **30/33** | **29/33 (88%)** |
+
+- **Older releases fix most of the coverage gap.** Recall goes from 52% (one
+  release) to 88% (union), and the dev and holdout splits agree.
+  Section Hiker, Modern Hiker, Hiking Guy, SoCal Hiker and Hikespeak were all
+  crawled in 2022–2024 and then went `nc` (not crawled) in 2025–2026. That
+  fits sites starting to block CCBot.
+- **Crawl depth for big sites also fell.** backpacker.com linked to 37–38
+  hubs in 2022–2023 but only 0–2 in 2024–2026; outsideonline.com went 44–45
+  → 2–6. Common Crawl probably fetched far fewer of their pages recently.
+  **Stage 4 should look across older crawls, not just the newest.**
+- Still missing: climb-utah.com and thehikinglife.com (never crawled in any
+  release), kentuckyhiker.com (crawled, no hub links), and the blogspot blog
+  (needs Stage 2b).
+- **The cost of the union is noise.** 88.8k domains have ≥ 2 hubs, against
+  35k from one release. Negatives rank higher too, because every domain
+  accumulates hubs across releases (theoutbound.com #27, rei.com #44). Expired
+  blogs come back via their old crawls (nobodyhikesinla.com #751). Stage 4 must
+  check what a site's pages are (commerce, listicles) and whether its
+  **recent** captures are still on-topic.
+- Hub domains are now excluded from the seed ranking (they were ranking as
+  seeds themselves, e.g. hikingproject.com).
+
 ## Stage 2b: Host-graph pass for platform blogs
 
 Same scoring as Stage 2, on the **host-level graph** (2026-aug-sep-oct:
@@ -472,7 +508,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 1: Graph release and hub IDs | ✅ done | `cmd/hubscore` pass 1; latest release still missing its vertices file, so default is `cc-main-2026-jul-aug-sep` |
 | 2: Edge stream and hub scoring | ✅ done | `cmd/hubscore` + `graph-seeds` workflow; first results above |
 | 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
-| 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: idf × weight × specificity; needs a gear/commerce filter |
+| 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: union of 5 releases, 88.8k domains ≥ 2 hubs, 88% recall; needs gear/commerce and expired-domain filters (Stage 4 signals) |
 | 4: URL index validation | ⬜ not started | |
 | 5: Candidate URL list | ⬜ not started | **First deliverable** |
 | 6: Snowball | ⬜ not started | |
@@ -483,9 +519,9 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 
 - How many domains link to ≥ 2 hubs? Is the long tail mostly blogs or mostly
   aggregators and SEO sites? (Measure in Stage 2.)
-- How many graph releases to union, and how far back? 11 of 33 known blogs
-  weren't crawled in 2026-jul-aug-sep at all. Check whether older releases
-  (2022–2023) have them.
+- Is one release per year enough, or would every release (roughly quarterly)
+  raise recall further? The union of five already reaches 88%; the remaining
+  misses are mostly never-crawled sites.
 - Common Crawl's CDN rate-limits bursts with 403s (seen on graph files, the
   index, and `index.commoncrawl.org` refusing connections from some
   networks). Every reader needs retry with backoff; DuckDB's httpfs does not
@@ -513,4 +549,5 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Found that the domain graph collapses blogspot (and presumably other private-PSL platforms) into one node; platform blogs need the host graph. |
 | 2026-11-07 | Stage 1–2 implemented as a single Go binary (`cmd/hubscore`) streaming the graph over HTTPS; no DuckDB needed for this stage. |
 | 2026-11-07 | All GitHub Actions jobs run on Arm runners (`ubuntu-24.04-arm`), not x86. |
+| 2026-11-07 | Seeds come from the union of one graph release per year (2022–2026): recall 52% → 88%. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |

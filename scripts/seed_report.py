@@ -60,6 +60,7 @@ def main():
     ap.add_argument("--run", action="append", required=True, help="hubscore output directory; repeat per release")
     ap.add_argument("--known", default="data/eval/known_blogs.csv")
     ap.add_argument("--negatives", default="data/eval/negatives.csv")
+    ap.add_argument("--hubs", default="data/hubs.csv", help="hub list; hub domains are excluded from the seed ranking")
     ap.add_argument("--seeds-out", required=True)
     ap.add_argument("--report-out", required=True)
     ap.add_argument("--min-hubs", type=int, default=2, help="seed threshold on distinct hubs")
@@ -90,8 +91,13 @@ def main():
             m["out_degree"] = max(m["out_degree"], r["out_degree"])
             m["n_hosts"] = max(m["n_hosts"], r["n_hosts"])
             m["per"][i] = r
+    # Hubs (any status) are reference sites, not seeds; leave them out of the ranking.
+    with open(args.hubs, newline="") as f:
+        hub_domains = {r["domain"] for r in csv.DictReader(f)}
     rows = []
     for m in merged.values():
+        if m["domain"] in hub_domains:
+            continue
         linked = [h for h in m["hubs"] if h in hubs]
         spec = 1.0 / (1.0 + math.log(1.0 + m["out_degree"] / 100.0))
         m["n_hubs"] = len(linked)
