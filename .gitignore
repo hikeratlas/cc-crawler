@@ -1,2 +1,4 @@
 out/
 /hubscore
+__pycache__/
+*.pyc
