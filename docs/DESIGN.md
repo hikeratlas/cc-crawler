@@ -434,6 +434,8 @@ and Stage 6.
 
 Conventions:
 
+- **All jobs run on Arm** (`runs-on: ubuntu-24.04-arm`, free for public repos).
+  Any binaries or tools we add must have arm64 builds.
 - Small, reviewable inputs (`data/*.csv`) live in git. Large outputs go to
   **Release assets** (≤ 2 GB each) or a Hugging Face dataset, never git.
 - Every output records the graph release and crawl ids it came from.
@@ -500,4 +502,5 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Everything is keyed on **site** (domain, or host under blog platforms) so platform blogs (Stage 2b) slot in without rework. |
 | 2026-11-07 | Found that the domain graph collapses blogspot (and presumably other private-PSL platforms) into one node; platform blogs need the host graph. |
 | 2026-11-07 | Stage 1–2 implemented as a single Go binary (`cmd/hubscore`) streaming the graph over HTTPS; no DuckDB needed for this stage. |
+| 2026-11-07 | All GitHub Actions jobs run on Arm runners (`ubuntu-24.04-arm`), not x86. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |

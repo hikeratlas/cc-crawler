@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   score:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm   # Arm runner (free for public repos); use Arm for every job
     timeout-minutes: 120
     env:
       RELEASE: ${{ inputs.release }}
