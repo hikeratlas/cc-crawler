@@ -1,0 +1,30 @@
+{
+  "base_rate": 0.30996309963099633,
+  "bias": -0.8813355694710385,
+  "mean": {
+    "first_person": 1.6255735630940422,
+    "log_affiliate": 0.04373359875968428,
+    "log_business": 0.43865065715231827,
+    "log_commerce": 0.029339563198304563,
+    "log_words": 6.297806582468736,
+    "singular": 0.7980792229971492
+  },
+  "std": {
+    "first_person": 1.839796477174735,
+    "log_affiliate": 0.200463355211303,
+    "log_business": 0.6646264977575973,
+    "log_commerce": 0.1721747463944129,
+    "log_words": 0.6792813070323641,
+    "singular": 1.3438314568130139
+  },
+  "target": "personal",
+  "trained_on": 189,
+  "weights": {
+    "first_person": 0.3527522215934961,
+    "log_affiliate": 0.38052731402099166,
+    "log_business": -0.3442847722177415,
+    "log_commerce": 0.09511352545622305,
+    "log_words": 0.11150179600075051,
+    "singular": 0.3460173384032533
+  }
+}

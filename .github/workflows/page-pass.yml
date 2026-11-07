@@ -1,0 +1,120 @@
+# Stage 7: fetch every remaining candidate page from Common Crawl's WARC files
+# and score it (relevance + personal/professional), keeping pages above the
+# relevance threshold. Takes candidates from a site-content release and
+# publishes a page-pass-run-<n> release with the final page list, a site
+# table (with site_kind), a report, and the fetched page text for later
+# extraction. All jobs run on Arm runners. See docs/DESIGN.md, Stage 7.
+name: page-pass
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_content_release:
+        description: "site-content release to take candidates from"
+        default: "site-content-run-1"
+        required: true
+      partitions:
+        description: "Fetch partitions (each site stays in one partition)"
+        default: "16"
+        required: true
+      threshold:
+        description: "Keep pages whose relevance score is at least this"
+        default: "0.3"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # read the source release, create the page-pass-run-<n> release
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split candidates by site
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.site_content_release }}" --pattern candidates.tsv.gz --dir cand
+          python3 -I scripts/page_pass.py split --candidates cand/candidates.tsv.gz \
+            --partitions "${{ inputs.partitions }}" --out-dir plan
+          echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.partitions }}))))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-plan
+          path: plan/
+          retention-days: 30
+
+  fetch:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: page-plan
+          path: plan/
+      - name: Show this runner's public IP
+        run: |
+          echo "public IP: $(curl -s -m 10 https://checkip.amazonaws.com || echo unknown)"
+      - name: Build
+        run: go build -o warcfetch ./cmd/warcfetch
+      - name: Fetch pages from WARC files
+        run: |
+          mkdir -p out
+          ./warcfetch -in "plan/part-${{ matrix.part }}.tsv" -out "out/pages-part-${{ matrix.part }}.jsonl" -max-text 8000
+          gzip out/*.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-text-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  score:
+    needs: fetch
+    if: ${{ !cancelled() }}   # score whichever partitions succeeded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: page-text-*
+          path: text/
+          merge-multiple: true
+      - name: Score pages and sites
+        run: |
+          ls -la text/
+          python3 -I scripts/page_pass.py score --pages 'text/*.jsonl.gz' \
+            --threshold "${{ inputs.threshold }}" --out-dir out
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-pass-report
+          path: out/
+          retention-days: 30
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="page-pass-run-${{ github.run_number }}"
+          gh release create "$tag" --title "Page pass (run ${{ github.run_number }})" \
+            --notes "Every candidate page from ${{ inputs.site_content_release }} fetched and scored; pages kept at relevance >= ${{ inputs.threshold }}. pages.tsv.gz is the final page list; sites.tsv.gz has site_kind; page-text-*.jsonl.gz hold the fetched text. See report.md." \
+            --target "$GITHUB_SHA"
+          gh release upload "$tag" out/report.md out/pages.tsv.gz out/sites.tsv.gz
+          for f in text/*.jsonl.gz; do gh release upload "$tag" "$f"; done
