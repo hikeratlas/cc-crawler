@@ -53,9 +53,10 @@ type cdxRecord struct {
 
 func main() {
 	crawl := flag.String("crawl", "CC-MAIN-2026-34", "crawl id")
+	htmlOnly := flag.Bool("html-only", true, "keep only status-200 HTML captures (text/html, application/xhtml+xml)")
 	sitesPath := flag.String("sites", "", "file of sites, one per line (first tab-separated column; header lines starting with # or 'rank' are skipped)")
 	out := flag.String("out", "out/captures.tsv.gz", "output (gzip TSV)")
-	maxBlocks := flag.Int("max-blocks-per-site", 4, "cap on CDX blocks read per site (~3,000 captures each)")
+	maxBlocks := flag.Int("max-blocks-per-site", 4, "cap on CDX blocks read per site (~3,000 captures each); larger sites get evenly spaced blocks")
 	concurrency := flag.Int("concurrency", 2, "parallel range requests (all requests also share one adaptive pacer)")
 	maxRequest := flag.Int64("max-request-bytes", 64<<20, "merge nearby blocks into requests up to this size")
 	maxGap := flag.Int64("max-gap-bytes", 4<<20, "merge blocks separated by up to this many unneeded bytes (fewer requests, more bytes)")
@@ -84,14 +85,23 @@ func main() {
 		if i < 0 {
 			i = 0
 		}
-		n := 0
-		for ; i < len(blocks) && blocks[i].key < hi; i++ {
-			if n == *maxBlocks {
-				capped++
-				break
+		// All blocks covering the site; if there are more than the cap, take
+		// evenly spaced ones so the sample spans the whole site rather than
+		// just its alphabetically first URLs.
+		first := i
+		for i < len(blocks) && blocks[i].key < hi {
+			i++
+		}
+		span := i - first
+		if span > *maxBlocks {
+			capped++
+			for k := 0; k < *maxBlocks; k++ {
+				need[first + k*span / *maxBlocks] = true
 			}
-			need[i] = true
-			n++
+		} else {
+			for j := first; j < i; j++ {
+				need[j] = true
+			}
 		}
 	}
 	idx := make([]int, 0, len(need))
@@ -162,6 +172,9 @@ func main() {
 					mime := rec.MimeDet
 					if mime == "" {
 						mime = rec.Mime
+					}
+					if *htmlOnly && (rec.Status != "200" || (mime != "text/html" && mime != "application/xhtml+xml")) {
+						continue
 					}
 					fmt.Fprintf(&buf, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", site, *crawl, ts, clean(rec.URL),
 						rec.Status, mime, rec.Languages, clean(rec.Redirect), rec.Filename, rec.Offset, rec.Length, rec.Digest)

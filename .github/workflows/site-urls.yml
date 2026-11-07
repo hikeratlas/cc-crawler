@@ -1,30 +1,40 @@
-# Stages 4–5 (first cut): look up every capture of the top-ranked seed sites
-# in several Common Crawl crawls (CDX index), score each site from its URLs,
-# and emit the candidate post URL list. See docs/DESIGN.md.
+# Stages 4–5: look up seed sites in Common Crawl's CDX index, score each site
+# from its URLs, and emit candidate post URLs. See docs/DESIGN.md, Stage 4.
 #
-# Seeds come from a graph-seeds release. Each crawl is looked up in its own
-# job (at most two at once). Outputs are attached to a GitHub release named
-# site-urls-run-<run number>. All jobs run on Arm runners.
+# The site list is split into partitions; each partition is one job that looks
+# its sites up in every crawl (sequentially, politely paced) and scores them.
+# A final job merges the per-site rows into a report and publishes a release
+# named site-urls-run-<run number>. All jobs run on Arm runners.
+#
+# Typical use is two passes:
+#   1. classify: site_source = a graph-seeds-* release, top = 0 (all seeds),
+#      two crawls, max_blocks = 1. Cheap; gives every site a verdict.
+#   2. harvest:  site_source = the site-urls-* release from pass 1 (its
+#      hiking / mixed / drifted sites), all crawls, max_blocks = 4.
 name: site-urls
 
 on:
   workflow_dispatch:
     inputs:
-      seeds_release:
-        description: "graph-seeds release tag to take seeds.tsv.gz from"
+      site_source:
+        description: "Release to take sites from: graph-seeds-* (ranked seeds) or site-urls-* (sites kept by a previous run)"
         default: "graph-seeds-run-2"
         required: true
       top:
-        description: "Number of top-ranked seeds (with >= 2 hubs) to look up"
-        default: "3000"
+        description: "graph-seeds source only: number of top seeds with >= 2 hubs (0 = all)"
+        default: "0"
         required: true
       crawls:
         description: "Comma-separated crawl ids"
-        default: "CC-MAIN-2026-34,CC-MAIN-2025-26,CC-MAIN-2024-26,CC-MAIN-2023-40,CC-MAIN-2022-27"
+        default: "CC-MAIN-2026-34,CC-MAIN-2023-40"
         required: true
       max_blocks:
         description: "Max CDX blocks (~3,000 captures each) per site per crawl"
-        default: "4"
+        default: "1"
+        required: true
+      partitions:
+        description: "Number of parallel site partitions"
+        default: "8"
         required: true
       publish:
         description: "Attach outputs to a GitHub release"
@@ -32,48 +42,64 @@ on:
         default: true
 
 permissions:
-  contents: write   # read the seeds release, create the site-urls-run-<n> release
+  contents: write   # read the source release, create the site-urls-run-<n> release
 
 jobs:
   plan:
     runs-on: ubuntu-24.04-arm
     outputs:
-      crawls: ${{ steps.split.outputs.crawls }}
+      parts: ${{ steps.split.outputs.parts }}
     steps:
       - uses: actions/checkout@v4
-      - id: split
-        env:
-          CRAWLS: ${{ inputs.crawls }}
-        run: |
-          json=$(python3 -c 'import json, os; print(json.dumps([c.strip() for c in os.environ["CRAWLS"].split(",") if c.strip()]))')
-          echo "crawls=$json" >> "$GITHUB_OUTPUT"
-      - name: Build the site list
+      - name: Build and split the site list
+        id: split
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.site_source }}
+          TOP: ${{ inputs.top }}
+          P: ${{ inputs.partitions }}
         run: |
-          gh release download "${{ inputs.seeds_release }}" --pattern seeds.tsv.gz --dir .
-          { zcat seeds.tsv.gz | awk -F'\t' 'NR > 1 && $4 >= 2 { print $2 }' | head -n "${{ inputs.top }}"
+          mkdir -p plan
+          case "$SOURCE" in
+            graph-seeds-*)
+              gh release download "$SOURCE" --pattern seeds.tsv.gz --dir plan
+              zcat plan/seeds.tsv.gz | awk -F'\t' 'NR > 1 && $4 >= 2 { print $2 }' > plan/ranked.txt
+              if [ "$TOP" != 0 ]; then head -n "$TOP" plan/ranked.txt > plan/t && mv plan/t plan/ranked.txt; fi
+              ;;
+            site-urls-*)
+              gh release download "$SOURCE" --pattern sites.tsv.gz --dir plan
+              gh release download "$SOURCE" --pattern seeds.tsv.gz --dir plan || true
+              zcat plan/sites.tsv.gz | awk -F'\t' 'NR > 1 && ($2 == "hiking" || $2 == "mixed" || $2 == "drifted") { print $1 }' > plan/ranked.txt
+              ;;
+            *) echo "::error::unknown site_source $SOURCE"; exit 1 ;;
+          esac
+          # Eval domains are always included; hubs are reference sites, never seeds.
+          { cat plan/ranked.txt
             tail -n +2 data/eval/known_blogs.csv | cut -d, -f1
             tail -n +2 data/eval/negatives.csv | cut -d, -f1
-          } | sort -u > sites.txt
-          wc -l sites.txt
+          } | awk '!seen[$0]++' | grep -vxF -f <(tail -n +2 data/hubs.csv | cut -d, -f1) > plan/sites.txt
+          wc -l plan/sites.txt
+          # Round-robin by rank so every partition gets a similar mix of big and small sites.
+          for ((i = 0; i < P; i++)); do awk -v p="$P" -v i="$i" '(NR - 1) % p == i' plan/sites.txt > "plan/sites-$i.txt"; done
+          echo "parts=$(python3 -c "import json; print(json.dumps(list(range($P))))")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: site-list
-          path: |
-            sites.txt
-            seeds.tsv.gz
+          name: plan
+          path: plan/
           retention-days: 30
 
-  lookup:
+  work:
     needs: plan
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
+    timeout-minutes: 340
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
-        crawl: ${{ fromJSON(needs.plan.outputs.crawls) }}
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    env:
+      PART: ${{ matrix.part }}
+      CRAWLS: ${{ inputs.crawls }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -81,47 +107,59 @@ jobs:
           go-version-file: go.mod
       - uses: actions/download-artifact@v4
         with:
-          name: site-list
+          name: plan
+          path: plan/
       - name: Build
         run: go build -o sitecdx ./cmd/sitecdx
-      - name: Look up captures (CDX index)
+      - name: Look up captures in each crawl (CDX index)
         run: |
-          mkdir -p out
-          ./sitecdx -crawl "${{ matrix.crawl }}" -sites sites.txt \
-            -max-blocks-per-site "${{ inputs.max_blocks }}" \
-            -out "out/captures-${{ matrix.crawl }}.tsv.gz"
+          mkdir -p cap out
+          IFS=, read -ra crawls <<< "$CRAWLS"
+          for c in "${crawls[@]}"; do
+            c=$(echo "$c" | xargs)
+            ./sitecdx -crawl "$c" -sites "plan/sites-$PART.txt" \
+              -max-blocks-per-site "${{ inputs.max_blocks }}" -out "cap/captures-$c.tsv.gz"
+          done
+      - name: Score sites
+        run: |
+          seeds=(); [ -f plan/seeds.tsv.gz ] && seeds=(--seeds plan/seeds.tsv.gz)
+          python3 -I scripts/site_report.py score --captures 'cap/captures-*.tsv.gz' "${seeds[@]}" \
+            --sites-out "out/sites-part-$PART.tsv.gz" --candidates-out "out/candidates-part-$PART.tsv.gz"
       - uses: actions/upload-artifact@v4
         with:
-          name: captures-${{ matrix.crawl }}
+          name: part-${{ matrix.part }}
           path: out/
           retention-days: 30
 
   report:
-    needs: lookup
-    if: ${{ !cancelled() }}   # report on whichever crawls succeeded
+    needs: work
+    if: ${{ !cancelled() }}   # report on whichever partitions succeeded
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: captures-*
+          pattern: part-*
           path: out/
           merge-multiple: true
       - uses: actions/download-artifact@v4
         with:
-          name: site-list
-      - name: Score sites and write candidates
+          name: plan
+          path: plan/
+      - name: Merge and report
         run: |
-          ls out/captures-*.tsv.gz
-          python3 -I scripts/site_report.py --captures 'out/captures-*.tsv.gz' --seeds seeds.tsv.gz \
-            --sites-out out/sites.tsv.gz --candidates-out out/candidates.tsv.gz --report-out out/report.md
+          ls out/
+          { zcat out/sites-part-*.tsv.gz | awk 'NR == 1 || $1 != "site"'; } | gzip > out/sites.tsv.gz
+          python3 -I scripts/site_report.py report --sites 'out/sites-part-*.tsv.gz' \
+            --candidates 'out/candidates-part-*.tsv.gz' --site-list plan/sites.txt \
+            --title "${{ inputs.site_source }}, crawls ${{ inputs.crawls }}, max ${{ inputs.max_blocks }} block(s)/site" \
+            --report-out out/report.md
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: site-urls-report
           path: |
             out/sites.tsv.gz
-            out/candidates.tsv.gz
             out/report.md
           retention-days: 30
       - name: Publish release assets
@@ -131,6 +169,8 @@ jobs:
         run: |
           tag="site-urls-run-${{ github.run_number }}"
           gh release create "$tag" --title "Site URLs (run ${{ github.run_number }})" \
-            --notes "Top ${{ inputs.top }} seeds from ${{ inputs.seeds_release }}, looked up in: ${{ inputs.crawls }}. See report.md." \
+            --notes "Sites from ${{ inputs.site_source }} (top ${{ inputs.top }}), crawls ${{ inputs.crawls }}, max ${{ inputs.max_blocks }} block(s)/site, ${{ inputs.partitions }} partitions. See report.md." \
             --target "$GITHUB_SHA"
-          gh release upload "$tag" out/sites.tsv.gz out/candidates.tsv.gz out/report.md out/captures-*.tsv.gz
+          files=(out/report.md out/sites.tsv.gz out/candidates-part-*.tsv.gz)
+          [ -f plan/seeds.tsv.gz ] && files+=(plan/seeds.tsv.gz)
+          gh release upload "$tag" "${files[@]}"
