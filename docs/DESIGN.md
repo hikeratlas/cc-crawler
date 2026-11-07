@@ -708,7 +708,7 @@ text of all 324k pages, for later extraction).
   on 188 sites with hand labels (spot-check pages plus known blogs) its
   **AUC is 0.79**. At ≥ 0.35 it's ~72% precise for personal sites with
   ~59% recall (somewhat optimistic, since these sites overlap the training
-  labels). The default cutoff is now 0.35 (1,446 sites). Downstream users
+  labels). The default cutoff is now 0.35 (1,643 sites, 63,851 kept pages). Downstream users
   should treat `personal_score` as a sort key, not a verdict. Better
   signals would be site-level: number of distinct bylines, site size,
   graph prominence, and about pages.
