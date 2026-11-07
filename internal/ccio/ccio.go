@@ -5,8 +5,8 @@
 // as 503 (see https://status.commoncrawl.org/). Their guidance is to slow
 // down when you see either, not just retry. So every request here goes
 // through one shared pacer that starts at MinInterval between requests,
-// doubles the interval on each 403/503/429 (up to MaxInterval), and eases
-// back after a run of successes. Failed requests also retry with backoff,
+// doubles the interval on each burst of 403/503/429 (up to MaxInterval), and
+// eases back with a RecoveryHalfLife once the refusals stop. Failed requests also retry with backoff,
 // and long streams resume from the current byte offset with a Range request.
 package ccio
 
@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strings"
@@ -46,58 +47,70 @@ var (
 )
 
 type pacer struct {
-	mu       sync.Mutex
-	interval time.Duration
-	next     time.Time
-	streak   int
-	slowed   int // number of slow-down signals seen
+	mu           sync.Mutex
+	interval     time.Duration // interval right after the last throttle signal
+	lastThrottle time.Time
+	next         time.Time
+	slowed       int // number of slow-down signals seen
 }
 
 var pace = &pacer{}
 
+// RecoveryHalfLife is how quickly the extra delay decays once rate-limit
+// responses stop: it halves every RecoveryHalfLife without a new signal.
+var RecoveryHalfLife = 30 * time.Second
+
+// current returns the pacing interval now: the interval set at the last
+// throttle, decaying exponentially back to MinInterval. Caller holds mu.
+func (p *pacer) current(now time.Time) time.Duration {
+	if p.interval <= MinInterval || p.lastThrottle.IsZero() {
+		return MinInterval
+	}
+	halves := float64(now.Sub(p.lastThrottle)) / float64(RecoveryHalfLife)
+	extra := time.Duration(float64(p.interval-MinInterval) * math.Pow(0.5, halves))
+	if extra*100 < MinInterval { // within 1% of the floor
+		return MinInterval
+	}
+	return MinInterval + extra
+}
+
 // wait blocks until this caller may start a request.
 func (p *pacer) wait() {
 	p.mu.Lock()
-	if p.interval < MinInterval {
-		p.interval = MinInterval
-	}
 	now := time.Now()
 	start := p.next
 	if start.Before(now) {
 		start = now
 	}
-	p.next = start.Add(p.interval)
+	p.next = start.Add(p.current(start))
 	p.mu.Unlock()
 	time.Sleep(time.Until(start))
 }
 
-// throttled records a rate-limit signal: double the interval.
+// throttled records a rate-limit signal. Several signals within two seconds
+// (e.g. concurrent requests refused together) count as one: the interval
+// doubles once per burst, up to MaxInterval.
 func (p *pacer) throttled() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.streak = 0
 	p.slowed++
-	p.interval *= 2
+	now := time.Now()
+	if !p.lastThrottle.IsZero() && now.Sub(p.lastThrottle) < 2*time.Second {
+		return
+	}
+	cur := p.current(now)
+	p.interval = cur * 2
 	if p.interval > MaxInterval {
 		p.interval = MaxInterval
 	}
-	p.next = time.Now().Add(p.interval)
-	log.Printf("rate limited: now pacing requests %s apart", p.interval)
+	p.lastThrottle = now
+	p.next = now.Add(p.interval)
+	log.Printf("rate limited: pacing requests %s apart, easing back with a %s half-life", p.interval, RecoveryHalfLife)
 }
 
-// ok records a success: after 20 in a row, shorten the interval by 10%.
-func (p *pacer) ok() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.streak++
-	if p.streak >= 20 && p.interval > MinInterval {
-		p.streak = 0
-		p.interval = p.interval * 9 / 10
-		if p.interval < MinInterval {
-			p.interval = MinInterval
-		}
-	}
-}
+// ok records a success. Recovery is time-based (see current), so there is
+// nothing to do; kept as a hook for future use.
+func (p *pacer) ok() {}
 
 // SlowDowns reports how many rate-limit responses this process has seen.
 func SlowDowns() int {

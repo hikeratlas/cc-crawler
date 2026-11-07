@@ -407,9 +407,19 @@ Whole-file streams (`hubscore`) rarely notice, because once a request gets
 through the rest of the file streams without further checks.
 
 So `internal/ccio` paces every request through one shared, adaptive
-limiter. It starts at one request per 250 ms, doubles the interval on each
-403/429/503 (up to 30 s), and shortens it by 10% after every 20
-consecutive successes. Retries back off from 5 s, doubling up to 2 min.
+limiter. It starts at one request per 250 ms and doubles the interval once
+per *burst* of 403/429/503 responses (signals within 2 s count as one), up
+to 30 s. The extra delay then decays with a 30 s half-life once refusals
+stop.
+
+The first version recovered per request instead (−10% after every 20
+successes) and treated each concurrent refusal as a separate signal. In
+the classify run, that turned a few one-minute 403 bursts (10–20 refusals
+per job) into hours at a 10–30 s pace: partition 0 spent ~3 of its 4 hours
+recovering. The four jobs running in parallel got their first 403 within
+the same 5 s, which hints at a shared trigger (a shared egress IP or a
+Common Crawl-wide spike). But the next four parallel jobs saw almost
+none. Jobs now log their public IP so we can check. Retries back off from 5 s, doubling up to 2 min.
 `sitecdx` also merges blocks across gaps of up to 4 MB (CloudFront limits
 requests, not bytes) and defaults to 2 concurrent requests. A crawl lookup for
 3,000 sites takes ~10 min at that pace.
