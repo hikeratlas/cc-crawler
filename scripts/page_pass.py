@@ -186,7 +186,7 @@ def main():
     c.add_argument("--model", default=os.path.join(MODELS, "page_model.json"))
     c.add_argument("--kind-model", default=os.path.join(MODELS, "kind_model.json"))
     c.add_argument("--threshold", type=float, default=0.3)
-    c.add_argument("--personal-threshold", type=float, default=0.5)
+    c.add_argument("--personal-threshold", type=float, default=0.35)
     c.add_argument("--known", default=os.path.join(HERE, "..", "data", "eval", "known_blogs.csv"))
     c.add_argument("--out-dir", required=True)
     args = ap.parse_args()
