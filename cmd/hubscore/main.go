@@ -4,29 +4,28 @@
 // links to at least one hub (plus every domain in the eval lists, so recall
 // can be measured even when they link to no hubs).
 //
-// Inputs are read as gzip streams from local paths or https URLs. URL reads
-// resume with HTTP Range requests if the connection drops mid-stream.
+// Inputs are read as gzip streams from local paths or https URLs (see
+// internal/ccio for retry and resume behaviour).
 package main
 
 import (
 	"bufio"
 	"compress/gzip"
 	"encoding/csv"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math/bits"
-	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hikeratlas/cc-crawler/internal/ccio"
 )
 
-const graphBase = "https://data.commoncrawl.org/projects/hyperlinkgraph"
+const graphBase = ccio.Base + "/projects/hyperlinkgraph"
 
 type hub struct {
 	domain   string
@@ -303,7 +302,10 @@ func parseInt(b []byte) int64 {
 // scanTSV streams a gzipped TSV and calls fn with the fields of each line
 // until fn returns false. Field slices are only valid during the call.
 func scanTSV(src string, fn func([][]byte) bool) {
-	r := open(src)
+	r, err := ccio.Open(src)
+	if err != nil {
+		log.Fatalf("%s: %v", src, err)
+	}
 	defer r.Close()
 	gz, err := gzip.NewReader(bufio.NewReaderSize(r, 4<<20))
 	if err != nil {
@@ -330,94 +332,6 @@ func scanTSV(src string, fn func([][]byte) bool) {
 	if err := sc.Err(); err != nil {
 		log.Fatalf("%s: %v", src, err)
 	}
-}
-
-func open(src string) io.ReadCloser {
-	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
-		return &resumingReader{url: src}
-	}
-	f, err := os.Open(src)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return f
-}
-
-// resumingReader reads an HTTP resource, reconnecting with a Range request
-// from the current offset when the body errors out (connection reset, 503).
-type resumingReader struct {
-	url  string
-	off  int64
-	body io.ReadCloser
-}
-
-func (r *resumingReader) Read(p []byte) (int, error) {
-	for attempt := 0; ; attempt++ {
-		if r.body == nil {
-			if err := r.connect(); err != nil {
-				if attempt >= 8 {
-					return 0, err
-				}
-				backoff(attempt, err)
-				continue
-			}
-		}
-		n, err := r.body.Read(p)
-		r.off += int64(n)
-		if err == nil || errors.Is(err, io.EOF) {
-			return n, err
-		}
-		r.body.Close()
-		r.body = nil
-		if n > 0 {
-			return n, nil
-		}
-		if attempt >= 8 {
-			return 0, err
-		}
-		backoff(attempt, err)
-	}
-}
-
-func (r *resumingReader) connect() error {
-	req, err := http.NewRequest("GET", r.url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "hikeratlas-cc-crawler/0.1 (+https://github.com/hikeratlas/cc-crawler)")
-	if r.off > 0 {
-		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", r.off))
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	want := http.StatusOK
-	if r.off > 0 {
-		want = http.StatusPartialContent
-	}
-	if resp.StatusCode != want {
-		resp.Body.Close()
-		return fmt.Errorf("GET %s at offset %d: %s", r.url, r.off, resp.Status)
-	}
-	r.body = resp.Body
-	return nil
-}
-
-func (r *resumingReader) Close() error {
-	if r.body != nil {
-		return r.body.Close()
-	}
-	return nil
-}
-
-func backoff(attempt int, err error) {
-	d := time.Duration(1<<attempt) * 2 * time.Second
-	if d > 2*time.Minute {
-		d = 2 * time.Minute
-	}
-	log.Printf("read error (%v); retrying in %s", err, d)
-	time.Sleep(d)
 }
 
 func dirOf(p string) string {

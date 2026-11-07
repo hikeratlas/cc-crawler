@@ -1,0 +1,107 @@
+# US national parks and Canadian national parks (short common names), one
+# per line. Matched against URL slugs as word sequences. Some single words
+# are ambiguous (olympic, glacier, arches); this is a weak signal by design.
+acadia
+american samoa
+arches
+badlands
+big bend
+biscayne
+black canyon of the gunnison
+bryce canyon
+canyonlands
+capitol reef
+carlsbad caverns
+channel islands
+congaree
+crater lake
+cuyahoga valley
+death valley
+denali
+dry tortugas
+everglades
+gates of the arctic
+gateway arch
+glacier
+glacier bay
+grand canyon
+grand teton
+great basin
+great sand dunes
+great smoky mountains
+guadalupe mountains
+haleakala
+hawaii volcanoes
+hot springs
+indiana dunes
+isle royale
+joshua tree
+katmai
+kenai fjords
+kings canyon
+kobuk valley
+lake clark
+lassen volcanic
+mammoth cave
+mesa verde
+mount rainier
+new river gorge
+north cascades
+olympic
+petrified forest
+pinnacles
+redwood
+rocky mountain national park
+saguaro
+sequoia
+shenandoah
+theodore roosevelt
+virgin islands
+voyageurs
+white sands
+wind cave
+wrangell st elias
+yellowstone
+yosemite
+zion
+aulavik
+auyuittuq
+banff
+bruce peninsula
+cape breton highlands
+elk island
+forillon
+fundy
+georgian bay islands
+grasslands national park
+gros morne
+gwaii haanas
+ivvavik
+jasper
+kejimkujik
+kluane
+kootenay
+kouchibouguac
+la mauricie
+mingan archipelago
+mount revelstoke
+nahanni
+pacific rim
+point pelee
+prince albert national park
+pukaskwa
+quttinirpaaq
+riding mountain
+rouge national urban park
+sable island
+sirmilik
+terra nova
+thousand islands
+torngat mountains
+tuktut nogait
+ukkusiksalik
+vuntut
+wapusk
+waterton
+wood buffalo
+yoho

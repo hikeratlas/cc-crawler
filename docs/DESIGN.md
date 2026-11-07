@@ -370,32 +370,71 @@ mostly hiking or outdoor blogs.
 
 ## Stage 4: Validate seeds with the URL index
 
-For each seed domain, pull its URLs from the
-[columnar index](https://commoncrawl.org/columnar-index)
-(`cc-index/table/cc-main/warc/crawl=…/subset=warc/*.parquet`) with DuckDB over
-HTTPS. Thanks to the SURT sort and row-group statistics, a batch of domains
-reads only a small slice of the index.
+### Which index: CDX (zipnum) for seed lookups, Parquet for whole-index scans
 
-Columns used: `url`, `url_host_registered_domain`, `url_path`,
-`content_languages`, `content_mime_detected`, `fetch_status`, `fetch_time`,
-`content_digest`, `warc_filename`, `warc_record_offset`, `warc_record_length`.
+Both indexes live on `data.commoncrawl.org`. We measured them in Nov 2026:
 
-Per-domain features:
+- **Columnar (Parquet) index:** ~300 files per crawl, each ~7.3M rows in 5
+  row groups (~150 MB each). Each file covers one contiguous SURT range, but
+  file numbers are *not* in SURT order. The host columns are tiny (~1 MB per
+  file, since they're sorted), but `url` is ~95 MB per file, and `url_path` and
+  `url_surtkey` are similar. Pulling the columns we need for *all* rows is
+  ~30–60 GB per crawl. That's the right tool for a whole-index scan, such as
+  a URL classifier over every English page (Stage 7), not for per-site lookups.
+- **CDX (zipnum) index:** 300 sorted, gzipped shards (~800 MB each) plus a
+  `cluster.idx` (~100 MB) listing the first SURT key and byte range of each
+  block of ~3,000 lines (~270 KB compressed). One site usually lives in one
+  block, so the top 3,000 seeds need ~3,000 blocks, about **1 GB per crawl**.
+  This is what Stage 4 uses.
 
-- Share of URLs with **hiking slugs**: activity terms (`hike`, `hiking`,
-  `trail`, `trek`, `backpack`, `summit`, `peak`, `trailhead`, `thru-hike`,
-  `trip-report`, `snowshoe`, `-falls`, `-lake`, …).
-- Share of slugs with **US/CA places** (gazetteer hits: states, provinces,
-  national park names, multi-token peak and trail names).
-- Share with **blog-shaped paths**: `/YYYY/MM/`, long hyphenated slugs, `?p=`.
-- English share (`content_languages` primary = `eng`).
+`index.commoncrawl.org` (the CDX query API) refuses connections from some
+cloud networks, ours included, so we read the zipnum files directly.
 
-Promote domains with a high hiking-slug share. Demote domains where hiking is
-a tiny fraction, such as general travel blogs. Keep those too, because their
-hiking posts are still useful at the URL level.
+### Implementation
 
-Run this across **several crawls** for coverage. Each crawl captures a
-different subset of a site.
+- [`internal/ccio`](../internal/ccio/ccio.go): shared HTTPS reader with
+  retry, backoff and Range-resume. Common Crawl's CDN answers bursts with 403.
+- [`cmd/sitecdx`](../cmd/sitecdx/main.go): loads a crawl's `cluster.idx`,
+  finds the blocks covering each site's SURT range (`host)` … `host-`, which
+  covers the domain and all subdomains), caps it at `-max-blocks-per-site`
+  (default 4, ~12k captures), merges adjacent blocks into large Range
+  requests, and writes every matching capture with its WARC pointer.
+- [`scripts/site_report.py`](../scripts/site_report.py): per-site features
+  over unique HTML pages (`text/html` or `application/xhtml+xml`, status 200,
+  excluding boilerplate such as `/tag/`, `/page/2`, `/feed`):
+
+  | feature | signal |
+  |---|---|
+  | `hike_share` | hiking terms in the path (hike, trail, trek, summit, scramble, snowshoe, thru…) |
+  | `place_share` | landform terms (lake, falls, peak, canyon, ridge, pass, national-park…) |
+  | `geo_share` | a US state, Canadian province/territory or national park name ([`data/gazetteer/`](../data/gazetteer/)) |
+  | `blog_share` | `/2023/07/…` or a long hyphenated slug |
+  | `shop_share` | `/product/`, `/shop/`, `/cart`, `/collections/`… |
+  | `gear_share` | gear-review slugs (best-, -review, boots, tents, jackets…) |
+  | `eng_share` | Common Crawl's primary detected language is English |
+  | newest vs older | slug-match share in the newest crawl with ≥ 20 pages vs older crawls |
+
+  Verdicts (first-cut thresholds): `hiking` (keep all content pages),
+  `mixed` (keep slug-matching pages only), and `drifted` (newest crawl's
+  match share < 25% of older crawls', e.g. an expired domain; keep older
+  matching pages). Sites that are dropped: `shop` (≥ 25% commerce paths and
+  more than hiking paths), `gear` (≥ 45% gear-review paths), `off_topic`,
+  `thin` (< 5 pages captured) and `non_english`.
+- Workflow: [`site-urls`](../.github/workflows/site-urls.yml) (Arm, matrix
+  over crawls).
+
+Calibration notes from the eval lists (one crawl, CC-MAIN-2023-40):
+
+- 22 of the 24 known blogs captured there come out `hiking`; travel blogs and
+  magazines come out `mixed`, as intended.
+- Gear sites separate cleanly on `gear_share`: OutdoorGearLab 96%,
+  Switchback 61%, Greenbelly 46%; most blogs sit at 4–21%. **But
+  sectionhiker.com is at 37–44%**, so the 45% threshold is fragile.
+- Aggregators (10adventures.com, theoutbound.com) come out `hiking`. Their
+  pages *are* about hiking; they are just not blogs. `site_kind` (Stage 3)
+  is where that distinction belongs.
+- Some captures are useless even with status 200: backpacker.com's 2023
+  captures are almost all 302 redirects (consent or paywall bounce).
 
 ## Stage 5: Select candidate post URLs (the first deliverable)
 
@@ -509,8 +548,8 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2: Edge stream and hub scoring | ✅ done | `cmd/hubscore` + `graph-seeds` workflow; first results above |
 | 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
 | 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: union of 5 releases, 88.8k domains ≥ 2 hubs, 88% recall; needs gear/commerce and expired-domain filters (Stage 4 signals) |
-| 4: URL index validation | ⬜ not started | |
-| 5: Candidate URL list | ⬜ not started | **First deliverable** |
+| 4: URL index validation | 🟨 first cut | `cmd/sitecdx` + `scripts/site_report.py`; sample of top 3,000 seeds |
+| 5: Candidate URL list | 🟨 first cut | `candidates.tsv.gz` from `site-urls`; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ⬜ not started | |
 | 8: WET recall sample | ⬜ not started | |
@@ -550,4 +589,5 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Stage 1–2 implemented as a single Go binary (`cmd/hubscore`) streaming the graph over HTTPS; no DuckDB needed for this stage. |
 | 2026-11-07 | All GitHub Actions jobs run on Arm runners (`ubuntu-24.04-arm`), not x86. |
 | 2026-11-07 | Seeds come from the union of one graph release per year (2022–2026): recall 52% → 88%. |
+| 2026-11-07 | Stage 4 reads the CDX (zipnum) index directly for per-site lookups; Parquet is kept for later whole-index scans. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |
