@@ -1,0 +1,30 @@
+domain,region,type,split,notes
+modernhiker.com,US-CA (SoCal),personal_blog,dev,Cloudflare challenge when fetched directly; long-running LA hiking blog
+hikespeak.com,US-CA (SoCal),guide_site,holdout,"Personal site, guide format"
+hikingguy.com,US-CA (SoCal),guide_site,dev,Trail guides plus gear reviews
+socalhiker.net,US-CA (SoCal),personal_blog,holdout,
+yosemitehikes.com,US-CA (Yosemite),guide_site,dev,Single-park guide site
+halfwayanywhere.com,US (thru-hiking),personal_blog,holdout,PCT surveys; also bikepacking and gear
+andrewskurka.com,US (CO / thru-hiking),personal_blog,dev,Cloudflare challenge when fetched directly
+pmags.com,US (CO / thru-hiking),personal_blog,holdout,
+sectionhiker.com,US-NH (White Mountains),personal_blog,dev,403 to plain curl; graph rank ~31k
+thetrek.co,US (thru-hiking),multi_author,holdout,Hosts many hikers' trail journals; multi-author edge case
+bearfoottheory.com,US (West / national parks),personal_blog,dev,Outdoor and national parks travel
+earthtrekkers.com,US + international,mixed_travel,holdout,Family travel; lots of national park hikes; tests the travel-blog policy
+gowanderwild.com,US-PNW,personal_blog,dev,
+themandagies.com,US-PNW,mixed_travel,holdout,PNW travel and photography with many hikes
+thehikinglife.com,US,personal_blog,dev,Trip reports
+hikinginthesmokys.com,US-TN/NC (Smokies),guide_site,holdout,Single-park guide site
+kentuckyhiker.com,US-KY,personal_blog,dev,Found via the ranks keyword scan
+hikingdude.com,US,personal_blog,holdout,
+roadtripryan.com,US-UT/AZ,guide_site,dev,Canyoneering and hiking guides
+climb-utah.com,US-UT,guide_site,holdout,Canyoneering and mountaineering
+canyoneeringusa.com,US-UT,guide_site,dev,Canyoneering-heavy; edge case
+hikingwalking.com,US West + Europe,guide_site,holdout,Mixed US/Europe; tests the geo filter
+happiestoutdoors.ca,CA-BC,personal_blog,dev,
+outdoorvancouver.ca,CA-BC,guide_site,holdout,
+vancouvertrails.com,CA-BC,guide_site,dev,Also in hubs.csv; remove from one list or the other
+hikebiketravel.com,CA (national) + international,mixed_travel,holdout,
+hikingthegta.com,CA-ON (Toronto),personal_blog,dev,
+travelbanffcanada.com,CA-AB (Banff),mixed_travel,dev,Banff travel; check that it is independent rather than a tourism board
+1happyhiker.blogspot.com,US-NH (White Mountains),personal_blog,holdout,"Blogspot subdomain: collapsed into com.blogspot in the domain graph, so it can only be found via the host graph"

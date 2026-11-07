@@ -63,31 +63,52 @@ work is done by three cheap Common Crawl datasets:
 
 Before building anything clever, create a way to tell whether it works.
 
-- **`data/hubs.csv`**: hand-curated **hiking hub domains**. These are sites
-  that hiking bloggers link to much more often than the general web does. Each
-  row has a `weight` and a `category`. Starting ideas:
-  - Trail databases and trip-report sites: `alltrails.com`, `hikingproject.com`,
-    `wta.org`, `outdoorproject.com`, `hikingupward.com`, `trailpeak.com`,
-    `vancouvertrails.com`, `clubtread.com`.
-  - Peak-bagging: `peakbagger.com`, `listsofjohn.com`, `summitpost.org`,
-    `14ers.com`, `peakvisor.com`.
-  - Mapping and navigation: `caltopo.com`, `gaiagps.com`, `onxmaps.com`.
-  - Permits and parks (as link *targets* only): `recreation.gov`, `nps.gov`,
-    `parks.canada.ca`, `pc.gc.ca`, `bcparks.ca`, `ontarioparks.ca`, `sepaq.com`,
-    `fs.usda.gov`.
-  - Trail organizations: `appalachiantrail.org`, `pcta.org`, `brucetrail.org`,
-    `continentaldividetrail.org`.
-  - Avoid hubs that are too generic (`strava.com`, `instagram.com`) or that are
-    mostly about other activities (`trailforks.com` for biking,
-    `mountainproject.com` for climbing). These can come back later at low weight.
-- **`data/eval/known_blogs.txt`**: a hand-assembled list of **known** US/Canada
-  hiking blogs, around 50–100 to start. Used to measure seed recall.
-  Never tune thresholds against it without holding some of it back.
-- **`data/eval/negatives.txt`**: domains that should *not* come out. Gear
-  retailers, tourism boards, news sites, aggregators, SEO "top 10 hikes" farms.
+- **[`data/hubs.csv`](../data/hubs.csv)**: hand-curated **hiking hub domains**.
+  These are sites that hiking bloggers link to much more often than the general
+  web does. Columns: `domain, category, weight, status, notes`.
+  - `category`: `trail_db`, `peakbagging`, `mapping`, `conditions`,
+    `permits_parks`, `trail_org`, plus `advocacy`, `other_activity` and
+    `too_generic`.
+  - `weight`: a hand-set starting point. It gets combined with a measured IDF
+    (hub in-degree) in Stage 3.
+  - `status`: `active` (used), `candidate` (needs a decision), or `excluded`
+    (kept for the record and why).
+  - **Hubs must be pay-level domains (PLDs).** `fs.usda.gov` becomes `usda.gov`
+    and `parks.canada.ca` becomes `canada.ca` in the domain graph, which is far
+    too generic. Those need the host graph. `pc.gc.ca` is fine because `gc.ca` is
+    a public suffix.
+- **[`data/eval/known_blogs.csv`](../data/eval/known_blogs.csv)**: hand-verified
+  US/Canada hiking blogs, used to measure seed recall. Columns:
+  `domain, region, type, split, notes`. Each row is split `dev`/`holdout`; only
+  tune thresholds against `dev`. `type` (`personal_blog`, `guide_site`,
+  `multi_author`, `mixed_travel`, `magazine`) lets us report recall per kind of
+  site.
+- **[`data/eval/negatives.csv`](../data/eval/negatives.csv)**: domains that
+  should *not* come out (retailers, gear reviews, aggregators, tourism boards,
+  SEO listicles, magazines for now), with a `reason`.
 - **Gazetteers** for later stages. US/Canadian state and province names and
   abbreviations, plus multi-token park, summit and trail names from GNIS (US),
   CGNDB (Canada), and/or the hikeratlas OSM extracts.
+
+`scripts/graph_presence.sh [release]` looks up every listed domain in a graph
+release's ranks file and writes `data/reports/graph_presence_<release>.csv`
+(harmonic rank, PageRank rank, host count; blank means not in the graph). Re-run
+it whenever the lists change.
+
+Lessons from drafting these lists (Nov 2026):
+
+- **Expired blog domains are a real hazard.** `nobodyhikesinla.com` (a
+  well-known LA hiking blog) and `hikeitbaby.com` now serve gambling spam. Old
+  inlinks and old crawls still make them look like hiking sites. Later stages
+  should check that each domain's *recent* captures still look on-topic. Older
+  crawls are the place to get the good content.
+- **Domain names are a poor signal on their own.** Scanning the ranks file
+  for domains containing `hik`, `trail`, `summit` and so on returned ~29k
+  domains in the 2026-jul-aug-sep graph. The top of that list is dominated by
+  tech "summits", heritage and bourbon "trails", and Japanese words containing
+  "hika"/"shika". It did turn up useful trail-organization hubs.
+- **Many blogs block plain HTTP fetches** (Cloudflare, 403). That's one more
+  reason to read page content from Common Crawl, not the live web.
 
 **Done when:** the hub list and eval lists are committed and reviewed.
 
@@ -173,24 +194,36 @@ Filters:
   centrality, news, social, and retail.
 - TLD prior: favour `.com/.org/.net/.ca/.us/.blog/…`. Drop obviously non-English
   ccTLDs.
-- Apply `negatives.txt`.
+- Apply `negatives.csv`.
 
-**Blog platforms need special handling.** The domain graph aggregates by
-pay-level domain using the [public suffix list](https://publicsuffix.org):
+**Blog platforms need special handling.** The domain graph aggregates hosts
+into pay-level domains using the [public suffix list](https://publicsuffix.org),
+but **only its ICANN section**. In practice, every hosted-blog platform
+collapses into a single node:
 
-| Platform | On the PSL? | Effect in the domain graph |
-|---|---|---|
-| `blogspot.com`, `github.io`, `wixsite.com` | yes | Each blog is its own domain. ✅ |
-| `wordpress.com`, `medium.com`, `substack.com`, `squarespace.com`, `weebly.com`, `tumblr.com`, `typepad.com` | **no** | All blogs collapse into one node. ❌ |
+| Platform | Domain-graph node (2026-jul-aug-sep) |
+|---|---|
+| `*.blogspot.com` | **one** node, `com.blogspot`, with ~4.0M hosts. Verified: no per-blog entries in the vertices file, even though blogspot is in the PSL's *private* section. |
+| `*.github.io`, `*.wixsite.com` | Expected to collapse the same way (also private-section suffixes). Not yet verified. |
+| `wordpress.com`, `medium.com`, `substack.com`, `squarespace.com`, `weebly.com`, `tumblr.com`, `typepad.com` | Not public suffixes at all, so each is one node. |
 
-For the second group, run the same hub scoring on the **host-level graph**
-(~243M nodes, ~2.4B edges, split into many files), restricted to hosts under
-those parents. Medium also uses paths (`medium.com/@user`), which the graph
-can't separate at all. Defer those to Stage 4's URL-level matching.
+Consequences:
+
+- Blogs on their **own domain** (most established hiking blogs) work in the
+  domain graph.
+- **Platform-hosted blogs need the host-level graph.** It has ~243M nodes and
+  ~2.4B edges, split into 48 vertices files and 192 edges files. Run the same
+  hub scoring on it, restricted to hosts under the platform parents. Hub ids
+  for the host graph would be the hubs' main hosts (e.g. `www.alltrails.com`,
+  `alltrails.com`).
+- Medium also puts blogs in paths (`medium.com/@user`), which neither graph can
+  separate. Defer those to Stage 4's URL-level matching.
+- `data/eval/known_blogs.csv` includes one blogspot blog
+  (`1happyhiker.blogspot.com`), which exists to catch this case.
 
 **Output:** `seeds.parquet` (ranked domains with their score components) and a
-per-run report of the precision and recall proxies against `known_blogs.txt`
-and `negatives.txt`.
+per-run report of the precision and recall proxies against `known_blogs.csv`
+and `negatives.csv`.
 
 **Done when:** recall on the held-out known blogs is acceptable (target TBD,
 e.g. ≥ 60%), and a hand review of a random sample of 100 seeds shows they're
@@ -261,7 +294,7 @@ Once we have high-confidence seed blogs, use them to find more:
 - Re-run Stages 2–5. Stop when new seeds mostly fail review.
 
 Guard against drift. Every round's additions are compared against
-`negatives.txt` and spot-checked.
+`negatives.csv` and spot-checked.
 
 ## Stage 7: Content spot checks (cheap, sampled)
 
@@ -319,7 +352,7 @@ Conventions:
 ```
 docs/DESIGN.md          ← this file
 data/hubs.csv           ← hub domains, weights, categories
-data/eval/              ← known_blogs.txt, negatives.txt
+data/eval/              ← known_blogs.csv, negatives.csv
 data/gazetteer/         ← (generated or downloaded) place names
 src/                    ← pipeline code (language TBD; likely Python + DuckDB, plus a small Go/Rust streamer if needed)
 .github/workflows/      ← one workflow per stage group
@@ -329,7 +362,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 
 | Stage | Status | Notes |
 |---|---|---|
-| 0: Reference data and eval set | ⬜ not started | |
+| 0: Reference data and eval set | 🟨 drafted, in review | `hubs.csv`, `known_blogs.csv`, `negatives.csv` drafted; graph presence checked against `cc-main-2026-jul-aug-sep` |
 | 1: Graph release and hub IDs | ⬜ not started | Latest release missing vertices file (see above) |
 | 2: Edge stream and hub scoring | ⬜ not started | |
 | 3: Seed domains | ⬜ not started | |
@@ -349,8 +382,9 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
   catch blogs that were dormant during one window?
 - How should we treat general travel blogs that only sometimes cover hiking?
   (Current plan: keep them at the URL level, ranked lower at the domain level.)
-- How best to handle non-PSL platforms (`wordpress.com`, `medium.com`, …): host
-  graph, URL-level matching, or both?
+- Platform-hosted blogs (blogspot, wordpress.com, medium, …) all collapse in the
+  domain graph. Is a host-graph pass worth its cost (~11 GB of edges) in the
+  first version, or should those wait for URL-level matching?
 - Where should outputs live long-term: GitHub Releases or a Hugging Face dataset?
 
 ## Decision log
@@ -360,4 +394,6 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Focus on **blogs** only; official pages deferred. |
 | 2026-11-07 | Repo is public so Actions minutes are free; **no LLM budget** to start. |
 | 2026-11-07 | First deliverable is a **URL list** (with WARC pointers for later extraction). |
+| 2026-11-07 | Magazines (Backpacker, Outside, Explore) treated as negatives for now; revisit. |
+| 2026-11-07 | Found that the domain graph collapses blogspot (and presumably other private-PSL platforms) into one node; platform blogs need the host graph. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |

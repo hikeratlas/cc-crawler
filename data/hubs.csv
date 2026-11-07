@@ -1,0 +1,66 @@
+domain,category,weight,status,notes
+alltrails.com,trail_db,1.0,active,Most widely linked trail DB; generic enough that weight may need an IDF discount
+hikingproject.com,trail_db,1.0,active,
+outdoorproject.com,trail_db,1.0,active,
+wta.org,trail_db,1.5,active,Washington Trails Association; trail guide plus trip reports; strong PNW signal
+oregonhikers.org,trail_db,1.5,active,Oregon field guide wiki and forum
+hikearizona.com,trail_db,1.5,active,HAZ community trip reports
+hikingupward.com,trail_db,1.5,active,Mid-Atlantic hike guides (VA/WV/MD)
+greentrailsmaps.com,trail_db,1.5,active,WA/OR trail map publisher; found via the ranks keyword scan
+vancouvertrails.com,trail_db,1.5,active,BC trail guide (also a personal site; see known_blogs)
+trailpeak.com,trail_db,1.5,active,Canadian trail DB
+clubtread.com,trail_db,1.5,active,BC hiking forum and trip reports
+nwhikers.net,trail_db,1.5,active,PNW trip-report forum
+newenglandtrailconditions.com,trail_db,1.5,active,NE trail conditions reports
+traillink.com,trail_db,0.5,active,Rails-to-trails; skews cycling and walking
+peakbagger.com,peakbagging,2.0,active,Strong hiker/peakbagger signal
+listsofjohn.com,peakbagging,2.0,active,
+summitpost.org,peakbagging,1.5,active,
+14ers.com,peakbagging,1.5,active,Colorado
+peakvisor.com,peakbagging,1.0,active,
+peakery.com,peakbagging,1.5,active,
+bivouac.com,peakbagging,1.5,active,Canadian mountain encyclopedia
+caltopo.com,mapping,1.5,active,
+gaiagps.com,mapping,1.0,active,
+onxmaps.com,mapping,0.5,active,Skews hunting and offroad
+mountain-forecast.com,conditions,1.0,active,Global; climbers too
+avalanche.org,conditions,0.5,active,US avalanche centers; winter and skiing skew
+avalanche.ca,conditions,0.5,active,Avalanche Canada; winter and skiing skew
+recreation.gov,permits_parks,1.0,active,Permits and campgrounds; link target only
+nps.gov,permits_parks,0.5,active,Very widely linked (schools/news/travel); low weight
+blm.gov,permits_parks,0.5,active,Widely linked; low weight
+pc.gc.ca,permits_parks,1.0,active,Parks Canada legacy domain (gc.ca is a public suffix so this is its own PLD)
+bcparks.ca,permits_parks,1.5,active,
+ontarioparks.ca,permits_parks,1.5,active,Check whether .ca or .com is the live domain (both listed)
+ontarioparks.com,permits_parks,1.5,active,
+albertaparks.ca,permits_parks,1.5,active,
+sepaq.com,permits_parks,1.0,active,Quebec parks; much of its link graph will be French
+reserveamerica.com,permits_parks,0.5,active,State park campground reservations; camping skew
+appalachiantrail.org,trail_org,1.5,active,
+pcta.org,trail_org,2.0,active,
+continentaldividetrail.org,trail_org,2.0,active,
+coloradotrail.org,trail_org,2.0,active,
+aztrail.org,trail_org,2.0,active,
+superiorhiking.org,trail_org,2.0,active,
+iceagetrail.org,trail_org,2.0,active,Found via the ranks keyword scan
+fingerlakestrail.org,trail_org,2.0,active,Found via the ranks keyword scan
+floridatrail.org,trail_org,2.0,active,Found via the ranks keyword scan
+tahoerimtrail.org,trail_org,2.0,active,Found via the ranks keyword scan
+greenmountainclub.org,trail_org,2.0,active,Long Trail (VT)
+brucetrail.org,trail_org,2.0,active,Ontario
+tctrail.ca,trail_org,1.0,active,Trans Canada Trail; also cycling
+adk.org,trail_org,1.5,active,Adirondack Mountain Club
+outdoors.org,trail_org,1.5,active,Appalachian Mountain Club
+mountaineers.org,trail_org,1.5,active,
+carolinamountainclub.org,trail_org,1.5,active,
+americantrails.org,trail_org,0.5,candidate,Trail policy/advocacy; may skew professional
+railstotrails.org,trail_org,0.5,candidate,Skews cycling
+usda.gov,permits_parks,0.0,excluded,fs.usda.gov collapses into usda.gov (all of USDA) in the domain graph; needs host graph
+canada.ca,permits_parks,0.0,excluded,parks.canada.ca collapses into canada.ca (all of the federal government); needs host graph
+nationalparks.org,advocacy,0.0,candidate,National Park Foundation; donors/news; probably too generic
+npca.org,advocacy,0.0,candidate,Advocacy; probably too generic
+trailforks.com,other_activity,0.0,candidate,Mountain biking; could add at low weight
+mountainproject.com,other_activity,0.0,candidate,Climbing; could add at low weight
+strava.com,too_generic,0.0,excluded,Running and cycling dominate
+komoot.com,too_generic,0.0,candidate,Route planner; European skew
+localhikes.com,trail_db,0.0,excluded,Now redirects to AllTrails
