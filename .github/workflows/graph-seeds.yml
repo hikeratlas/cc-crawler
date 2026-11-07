@@ -1,0 +1,92 @@
+# Stages 1–3 (first cut): score every domain in a Common Crawl domain web graph
+# against data/hubs.csv, then rank seeds and report recall on data/eval/.
+# See docs/DESIGN.md.
+#
+# Outputs are uploaded as a workflow artifact and attached to a GitHub release
+# named graph-seeds-<release>.
+name: graph-seeds
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Web graph release (see https://index.commoncrawl.org/graphinfo.json)"
+        default: "cc-main-2026-jul-aug-sep"
+        required: true
+      min_hubs:
+        description: "Seed threshold: minimum distinct hubs linked"
+        default: "2"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # create/update the graph-seeds-<release> release
+
+concurrency:
+  group: graph-seeds-${{ inputs.release }}
+  cancel-in-progress: false
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RELEASE: ${{ inputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check graph files exist
+        run: |
+          base="https://data.commoncrawl.org/projects/hyperlinkgraph/$RELEASE/domain/$RELEASE-domain"
+          for f in vertices edges; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -r 0-0 "$base-$f.txt.gz")
+            echo "$f: HTTP $code"
+            if [ "$code" != 206 ] && [ "$code" != 200 ]; then
+              echo "::error::$RELEASE is missing its $f file (HTTP $code). Pick another release."
+              exit 1
+            fi
+          done
+
+      - name: Build
+        run: go build -o hubscore ./cmd/hubscore
+
+      - name: Score domains against hubs (streams ~9.5 GB)
+        run: |
+          mkdir -p out
+          ./hubscore -release "$RELEASE" \
+            -out out/domain_hub_scores.tsv.gz \
+            -hub-out out/hub_stats.tsv \
+            -meta-out out/meta.json
+          cat out/meta.json
+
+      - name: Rank seeds and write report
+        run: |
+          python3 -I scripts/seed_report.py out/domain_hub_scores.tsv.gz out/hub_stats.tsv \
+            --meta out/meta.json --min-hubs "${{ inputs.min_hubs }}" \
+            --seeds-out out/seeds.tsv.gz --report-out out/report.md
+          cat out/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: graph-seeds-${{ inputs.release }}
+          path: out/
+          retention-days: 30
+
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="graph-seeds-$RELEASE"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --title "Graph seeds: $RELEASE" \
+              --notes "Domain hub scores and ranked seeds from the $RELEASE domain web graph. See report.md." \
+              --target "$GITHUB_SHA"
+          gh release upload "$tag" out/* --clobber

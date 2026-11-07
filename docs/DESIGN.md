@@ -182,26 +182,61 @@ Because edges are sorted by `from_id`, the aggregates can be computed with
 constant memory. This step also yields **hub in-degree** ("how many domains
 link to alltrails.com"), which gives an IDF-style weight per hub.
 
-**Implementation options** (to be measured):
+**Implementation:** [`cmd/hubscore`](../cmd/hubscore/main.go), a single Go
+binary with no dependencies.
 
-- DuckDB `read_csv` on the gzipped stream with a semi-join against the hub ids.
-  Simplest. Check memory use.
-- A ~50-line Go or Rust streaming aggregator that relies on the sort order.
-  Fastest, O(1) memory.
-- WebGraph (Java) on the **transposed** BVGraph: list the in-neighbours of each
-  hub directly. Very fast, but we'd still need out-degrees from the forward
-  graph or offsets.
+1. Pass 1 streams the vertices and resolves hub and eval-domain ids.
+2. Pass 2 streams the edges once. It relies on the `from_id` sort: one
+   domain's edges are aggregated, then emitted. A dense `[]int8` id → hub
+   table (~135 MB) keeps the per-edge cost to an array lookup.
+3. Pass 3 streams the vertices again to attach names and host counts.
 
-Expected runtime is tens of minutes on one runner. Mostly I/O and gunzip; use
-`pigz`.
+HTTPS reads resume from the current byte offset with a `Range` request if a
+connection drops. Self-links are ignored. Rows are emitted for every domain
+linking to ≥ 1 hub, plus every eval domain, even with zero hubs.
 
-**Output:** `domain_hub_scores.parquet` with `from_id, rev_domain, hub_links,
-hub_weight_sum, categories, out_degree`, kept only for domains with
-`hub_links ≥ 1`.
+Run it with the [`graph-seeds`](../.github/workflows/graph-seeds.yml)
+workflow (manual dispatch), or locally with `go run ./cmd/hubscore`.
+
+**Output:** `domain_hub_scores.tsv.gz` with `id, domain, n_hosts, out_degree,
+n_hubs, weight_sum, categories, hubs, in_eval`; `hub_stats.tsv` with each
+hub's id and in-degree; and `meta.json`.
 
 Write the aggregator so its inputs are generic: a vertices stream, an edges
 stream, a `node → hub` map, and a `node → site` filter. Stage 2b then reuses
 it unchanged.
+
+### First results (cc-main-2026-jul-aug-sep, 2026-11-07)
+
+Full report: [`data/reports/stage2_cc-main-2026-jul-aug-sep.md`](../data/reports/stage2_cc-main-2026-jul-aug-sep.md).
+
+- **Fast:** 133M vertices and 2.15B edges in **~6 min end to end** on 4 vCPU
+  / 16 GB (edge pass ~5 min). An earlier run took ~10 min because Common
+  Crawl's CDN returned 403s (rate limiting) for ~5 min; the resuming reader
+  waited them out.
+- **Funnel:** 154k domains link to ≥ 1 hub; 35k to ≥ 2; 22k to ≥ 2 hubs in
+  ≥ 2 categories; 3.8k to ≥ 5.
+- **Top of the ranking looks right.** Thru-hiking blogs, regional hiking
+  sites, trail guides and trip-report sites dominate the top 100.
+- **What scores high that shouldn't:** gear makers (cottage gear brands such
+  as tarptent.com), retailers (rei.com), gear-review sites (cleverhiker.com),
+  and big user-content platforms (strava.com). Stage 3 needs a
+  commerce/gear signal, probably from URL patterns in Stage 4 (`/product/`,
+  `/shop/`, `/cart`).
+- **Recall on known blogs is 52% at ≥ 2 hubs**, but the misses are mostly a
+  *coverage* problem rather than a scoring one. 11 of 33 known blogs have
+  **no outlinks at all** in this graph (plus the blogspot blog, which the
+  domain graph can't represent). They're link targets only, meaning
+  Common Crawl didn't fetch them in those three crawls. Two block CCBot in
+  robots.txt (hikingguy.com, halfwayanywhere.com). Others may be blocked at
+  the edge (e.g. Cloudflare's AI-bot blocking, which includes CCBot) or just
+  not reached. Of the known blogs that *were* crawled, 17 of 21 (81%) pass
+  ≥ 2 hubs.
+- **Implication:** union several graph releases, including **older ones**
+  from before AI-crawler blocking became common. Stage 4 should look for
+  each seed's captures in older crawls too.
+- nps.gov has by far the highest in-degree (101k linking domains). Its idf
+  already discounts it, but it is the main source of single-hub noise.
 
 ## Stage 2b: Host-graph pass for platform blogs
 
@@ -422,10 +457,10 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | Stage | Status | Notes |
 |---|---|---|
 | 0: Reference data and eval set | 🟨 drafted, in review | `hubs.csv`, `known_blogs.csv`, `negatives.csv` drafted; graph presence checked against `cc-main-2026-jul-aug-sep` |
-| 1: Graph release and hub IDs | ⬜ not started | Latest release missing vertices file (see above) |
-| 2: Edge stream and hub scoring | ⬜ not started | |
+| 1: Graph release and hub IDs | ✅ done | `cmd/hubscore` pass 1; latest release still missing its vertices file, so default is `cc-main-2026-jul-aug-sep` |
+| 2: Edge stream and hub scoring | ✅ done | `cmd/hubscore` + `graph-seeds` workflow; first results above |
 | 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
-| 3: Seed domains | ⬜ not started | |
+| 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: idf × weight × specificity; needs a gear/commerce filter |
 | 4: URL index validation | ⬜ not started | |
 | 5: Candidate URL list | ⬜ not started | **First deliverable** |
 | 6: Snowball | ⬜ not started | |
@@ -436,10 +471,13 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 
 - How many domains link to ≥ 2 hubs? Is the long tail mostly blogs or mostly
   aggregators and SEO sites? (Measure in Stage 2.)
-- Does DuckDB handle the 1.8B-edge stream within 16 GB, or do we need the
-  custom streamer?
-- Is one graph release enough, or should we union two or three releases to
-  catch blogs that were dormant during one window?
+- How many graph releases to union, and how far back? 11 of 33 known blogs
+  weren't crawled in 2026-jul-aug-sep at all. Check whether older releases
+  (2022–2023) have them.
+- Common Crawl's CDN rate-limits bursts with 403s (seen on graph files, the
+  index, and `index.commoncrawl.org` refusing connections from some
+  networks). Every reader needs retry with backoff; DuckDB's httpfs does not
+  retry 403 by default.
 - How should we treat general travel blogs that only sometimes cover hiking?
   (Current plan: keep them at the URL level, ranked lower at the domain level.)
 - How well can `site_kind` be inferred without an LLM? Measure it against the
@@ -461,4 +499,5 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Dropped candidate hubs: trailforks, mountainproject, komoot, npca, nationalparks.org, americantrails, railstotrails. |
 | 2026-11-07 | Everything is keyed on **site** (domain, or host under blog platforms) so platform blogs (Stage 2b) slot in without rework. |
 | 2026-11-07 | Found that the domain graph collapses blogspot (and presumably other private-PSL platforms) into one node; platform blogs need the host graph. |
+| 2026-11-07 | Stage 1–2 implemented as a single Go binary (`cmd/hubscore`) streaming the graph over HTTPS; no DuckDB needed for this stage. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |
