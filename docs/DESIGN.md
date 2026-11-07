@@ -390,6 +390,30 @@ Both indexes live on `data.commoncrawl.org`. We measured them in Nov 2026:
 `index.commoncrawl.org` (the CDX query API) refuses connections from some
 cloud networks, ours included, so we read the zipnum files directly.
 
+### Rate limits on data.commoncrawl.org
+
+From [Common Crawl's status page](https://status.commoncrawl.org/): HTTPS
+access goes through CloudFront, where **4xx (here: 403) responses are
+explicit rate-limit rules** and 5xx are S3 backpressure. The whole service
+handles "a few thousand requests per second" for everyone. The guidance is
+to **slow down** on 4xx/5xx, not just retry. Retrying alone "does not work
+well enough for partial file downloads, such as index lookups". No
+particular User-Agent is required (they block a UA only as a last resort
+against abusive clients); ours names the project and repo.
+
+What we saw: the first `site-urls` run sent ~2,500 Range requests in 64 s
+(4 concurrent, ~40 req/s) and was then refused with 403 for ~6 minutes.
+Whole-file streams (`hubscore`) rarely notice, because once a request gets
+through the rest of the file streams without further checks.
+
+So `internal/ccio` paces every request through one shared, adaptive
+limiter. It starts at one request per 250 ms, doubles the interval on each
+403/429/503 (up to 30 s), and shortens it by 10% after every 20
+consecutive successes. Retries back off from 5 s, doubling up to 2 min.
+`sitecdx` also merges blocks across gaps of up to 4 MB (CloudFront limits
+requests, not bytes) and defaults to 2 concurrent requests. A crawl lookup for
+3,000 sites takes ~10 min at that pace.
+
 ### Implementation
 
 - [`internal/ccio`](../internal/ccio/ccio.go): shared HTTPS reader with
