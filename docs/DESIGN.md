@@ -497,6 +497,26 @@ Fixes after the first top-3,000 run (site-urls run 1):
   language prefix (roadtripryan.com's `/go/…` came out `non_english`).
   Only real ISO 639-1 codes count now. The harvest re-checks the
   `non_english` sites with the fix.
+- Harvest pass (site-urls run 4; report:
+  [`data/reports/stage5_harvest_site-urls-run-4.md`](../data/reports/stage5_harvest_site-urls-run-4.md)):
+  15,812 sites (classify's hiking/mixed/drifted plus non_english for the
+  locale-bug re-check), 5 crawls, up to 4 blocks per site. **9,153 sites
+  kept** (2,604 hiking, 6,458 mixed, 91 drifted), **2.0M candidate URLs**
+  (1.03M with a hiking/place slug). It took 1 h 25 min: 8 jobs of ~40 min
+  each, ~8.5k requests per job. With the new pacer, the worst pacing interval was
+  under 1 s.
+  - Re-checking the 5,905 `non_english` sites rescued only 92, so the
+    locale bug had little effect.
+  - All 8 jobs had distinct public IPs, so parallel jobs don't share a rate
+    limit. The two jobs with the most 403 bursts (11 and 12, against 0–2
+    for the rest) were on neighbouring IPs (135.18.239.65 and .98), which
+    hints that Common Crawl's limit may apply per subnet.
+  - Known issues: expired blogs whose newest crawl is spam in another
+    language (nobodyhikesinla.com, hikeitbaby.com) come out `hiking`, not
+    `drifted`. Their kept pages are the genuine older posts, but the
+    drift check ignores non-English pages, so it misses the change.
+    backpacker.com comes out `gear` (45%+ gear-review slugs) once more of
+    the site is sampled.
 - Known limit: forum sites (oregonhikers.org is ~99% phpBB) have no words
   in their topic URLs, so URL scoring can't judge them; content checks
   (Stage 7) can.
@@ -626,8 +646,8 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2: Edge stream and hub scoring | ✅ done | `cmd/hubscore` + `graph-seeds` workflow; first results above |
 | 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
 | 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: union of 5 releases, 88.8k domains ≥ 2 hubs, 88% recall; needs gear/commerce and expired-domain filters (Stage 4 signals) |
-| 4: URL index validation | 🟨 classify done | all 88.7k seeds classified (2,554 hiking, 7,255 mixed); harvest pass next |
-| 5: Candidate URL list | 🟨 first cut | `candidates.tsv.gz` from `site-urls`; **first deliverable** |
+| 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
+| 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ⬜ not started | |
 | 8: WET recall sample | ⬜ not started | |
