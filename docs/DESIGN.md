@@ -476,6 +476,17 @@ Fixes after the first top-3,000 run (site-urls run 1):
   single feedback forum).
 - `sitecdx -html-only` (default) keeps only status-200 HTML captures,
   ~22% fewer rows.
+- Classify pass over all seeds (site-urls run 2; report:
+  [`data/reports/stage4_classify_site-urls-run-2.md`](../data/reports/stage4_classify_site-urls-run-2.md)):
+  88,727 sites, 76,640 with captures in CC-MAIN-2026-34 or CC-MAIN-2023-40.
+  2,554 `hiking`, 7,255 `mixed`, 83 `drifted`. The `hiking` share falls from
+  42% in the top 500 to ~1% past rank 40k, but 1,785 `hiking` sites rank
+  below 5,000. The run took 6 h: the first four partitions took 3.3–4.7 h
+  (paced down by rate limits), the second four ~1 h.
+- Locale bug found there: any two-letter first path segment counted as a
+  language prefix (roadtripryan.com's `/go/…` came out `non_english`).
+  Only real ISO 639-1 codes count now. The harvest re-checks the
+  `non_english` sites with the fix.
 - Known limit: forum sites (oregonhikers.org is ~99% phpBB) have no words
   in their topic URLs, so URL scoring can't judge them; content checks
   (Stage 7) can.
@@ -605,7 +616,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2: Edge stream and hub scoring | ✅ done | `cmd/hubscore` + `graph-seeds` workflow; first results above |
 | 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
 | 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: union of 5 releases, 88.8k domains ≥ 2 hubs, 88% recall; needs gear/commerce and expired-domain filters (Stage 4 signals) |
-| 4: URL index validation | 🟨 first cut | `cmd/sitecdx` + `scripts/site_report.py`; sample of top 3,000 seeds |
+| 4: URL index validation | 🟨 classify done | all 88.7k seeds classified (2,554 hiking, 7,255 mixed); harvest pass next |
 | 5: Candidate URL list | 🟨 first cut | `candidates.tsv.gz` from `site-urls`; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ⬜ not started | |

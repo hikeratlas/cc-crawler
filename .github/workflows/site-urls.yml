@@ -9,8 +9,8 @@
 # Typical use is two passes:
 #   1. classify: site_source = a graph-seeds-* release, top = 0 (all seeds),
 #      two crawls, max_blocks = 1. Cheap; gives every site a verdict.
-#   2. harvest:  site_source = the site-urls-* release from pass 1 (its
-#      hiking / mixed / drifted sites), all crawls, max_blocks = 4.
+#   2. harvest:  site_source = the site-urls-* release from pass 1, verdicts =
+#      hiking,mixed,drifted (the sites kept), all crawls, max_blocks = 4.
 name: site-urls
 
 on:
@@ -27,6 +27,10 @@ on:
       crawls:
         description: "Comma-separated crawl ids"
         default: "CC-MAIN-2026-34,CC-MAIN-2023-40"
+        required: true
+      verdicts:
+        description: "site-urls source only: comma-separated verdicts to take from the previous run"
+        default: "hiking,mixed,drifted"
         required: true
       max_blocks:
         description: "Max CDX blocks (~3,000 captures each) per site per crawl"
@@ -58,6 +62,7 @@ jobs:
           SOURCE: ${{ inputs.site_source }}
           TOP: ${{ inputs.top }}
           P: ${{ inputs.partitions }}
+          VERDICTS: ${{ inputs.verdicts }}
         run: |
           mkdir -p plan
           case "$SOURCE" in
@@ -69,7 +74,8 @@ jobs:
             site-urls-*)
               gh release download "$SOURCE" --pattern sites.tsv.gz --dir plan
               gh release download "$SOURCE" --pattern seeds.tsv.gz --dir plan || true
-              zcat plan/sites.tsv.gz | awk -F'\t' 'NR > 1 && ($2 == "hiking" || $2 == "mixed" || $2 == "drifted") { print $1 }' > plan/ranked.txt
+              zcat plan/sites.tsv.gz | awk -F'\t' -v v="$VERDICTS" 'BEGIN { n = split(v, a, ","); for (i = 1; i <= n; i++) keep[a[i]] = 1 }
+                NR > 1 && ($2 in keep) { print $1 }' > plan/ranked.txt
               ;;
             *) echo "::error::unknown site_source $SOURCE"; exit 1 ;;
           esac

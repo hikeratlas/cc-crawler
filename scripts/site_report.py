@@ -73,7 +73,12 @@ BOILER = re.compile(r"/(tags?|category|categories|author|authors|feed|search|wp-
                     r"require_login|credentials_cookie_auth|"
                     r"\.(xml|json|rss|txt|css|js|jpe?g|png|gif|pdf)$", re.I)
 SITE_OTHER = re.compile(r"offroad|4x4|4wd|jeep|overland|golf|winer(?:y|ies)|brewer(?:y|ies)|snowmobil")
-LOCALE = re.compile(r"^/(?!en(?:[-_][a-z]{2})?/)[a-z]{2}(?:[-_][a-z]{2})?(?:/|$)")
+# Non-English ISO 639-1 codes commonly used as URL locale prefixes (/de/, /fr-ca/, /pt_br/).
+# Matching any two letters would also catch ordinary paths like /go/ or /tv/.
+LANGS = ("af am ar az be bg bn bs ca cs cy da de el eo es et eu fa fi fil fr ga gl gu he hi hr hu hy id is it ja "
+         "ka kk km kn ko ky lo lt lv mk ml mn mr ms mt my nb ne nl nn no pa pl pt ro ru si sk sl sq sr sv sw ta te "
+         "th tl tr uk ur uz vi zh zu").split()
+LOCALE = re.compile(r"^/(?:" + "|".join(LANGS) + r")(?:[-_][a-z]{2,4})?(?:/|$)")
 
 
 def load_terms(path):
