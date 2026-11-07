@@ -56,10 +56,13 @@ func main() {
 	sitesPath := flag.String("sites", "", "file of sites, one per line (first tab-separated column; header lines starting with # or 'rank' are skipped)")
 	out := flag.String("out", "out/captures.tsv.gz", "output (gzip TSV)")
 	maxBlocks := flag.Int("max-blocks-per-site", 4, "cap on CDX blocks read per site (~3,000 captures each)")
-	concurrency := flag.Int("concurrency", 4, "parallel range requests")
-	maxRequest := flag.Int64("max-request-bytes", 16<<20, "merge adjacent blocks into requests up to this size")
+	concurrency := flag.Int("concurrency", 2, "parallel range requests (all requests also share one adaptive pacer)")
+	maxRequest := flag.Int64("max-request-bytes", 64<<20, "merge nearby blocks into requests up to this size")
+	maxGap := flag.Int64("max-gap-bytes", 4<<20, "merge blocks separated by up to this many unneeded bytes (fewer requests, more bytes)")
+	minInterval := flag.Duration("min-interval", 250*time.Millisecond, "fastest pace between request starts")
 	flag.Parse()
 	start := time.Now()
+	ccio.MinInterval = *minInterval
 
 	sites := readSites(*sitesPath)
 	siteSet := map[string]bool{} // SURT host prefix, e.g. "com,example"
@@ -97,27 +100,33 @@ func main() {
 	}
 	sort.Ints(idx)
 
-	// Merge runs of adjacent blocks in the same shard.
+	// Merge blocks in the same shard that are adjacent or separated by a small
+	// gap. Common Crawl rate-limits requests, not bytes, so a few extra bytes
+	// per request are a good trade.
 	type request struct {
 		shard       string
 		off, length int64
 	}
 	var reqs []request
-	var bytesTotal int64
+	var bytesTotal, bytesFetched int64
 	for _, i := range idx {
 		b := blocks[i]
 		bytesTotal += b.length
 		if n := len(reqs); n > 0 {
 			last := &reqs[n-1]
-			if last.shard == b.shard && last.off+last.length == b.offset && last.length+b.length <= *maxRequest {
-				last.length += b.length
+			gap := b.offset - (last.off + last.length)
+			if last.shard == b.shard && gap >= 0 && gap <= *maxGap && last.length+gap+b.length <= *maxRequest {
+				last.length += gap + b.length
 				continue
 			}
 		}
 		reqs = append(reqs, request{b.shard, b.offset, b.length})
 	}
-	log.Printf("%d blocks (%.1f MB) in %d requests; %d sites capped at %d blocks",
-		len(idx), float64(bytesTotal)/1e6, len(reqs), capped, *maxBlocks)
+	for _, r := range reqs {
+		bytesFetched += r.length
+	}
+	log.Printf("%d blocks (%.1f MB needed, %.1f MB fetched) in %d requests; %d sites capped at %d blocks",
+		len(idx), float64(bytesTotal)/1e6, float64(bytesFetched)/1e6, len(reqs), capped, *maxBlocks)
 
 	if err := os.MkdirAll(dirOf(*out), 0o755); err != nil {
 		log.Fatal(err)
@@ -177,7 +186,8 @@ func main() {
 	must(w.Flush())
 	must(gzw.Close())
 	must(fo.Close())
-	log.Printf("kept %d of %d CDX lines; wrote %s in %s", kept, seen, *out, time.Since(start).Round(time.Second))
+	log.Printf("kept %d of %d CDX lines; wrote %s in %s; %d rate-limit responses",
+		kept, seen, *out, time.Since(start).Round(time.Second), ccio.SlowDowns())
 }
 
 func readSites(path string) []string {
