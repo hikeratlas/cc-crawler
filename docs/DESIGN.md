@@ -729,6 +729,69 @@ and Stage 6.
 
 ---
 
+## Stage 9: Extraction (first pass)
+
+`scripts/extract.py` (stdlib) reads the page text saved by the page pass and,
+for every kept page, writes one JSON record:
+
+- **page_type**: `trail_guide` (≥ 2 stat labels such as "Distance:" or
+  "Elevation gain:"), `list_article` (listicle title), `trip_report`
+  (first-person past tense: "we hiked", "I reached"; ≥ 4 such phrases wins
+  over a stats box), `article`, or `general` (no located features).
+- **features**: trails, hikes, peaks, lakes, waterfalls, cliffs and parks,
+  matched against the Hiker Atlas autosuggest index
+  (`north-america.autosuggest.db`, US and Canada only). Matching is a greedy
+  longest match over capitalised spans of 2+ tokens. Names made only of
+  generic words, one-word names and a short stoplist of ordinary phrases
+  ("out and back", "runner up") are skipped.
+- **location**: one region per page. Every candidate location of every
+  mentioned name is tried as the page's centre; a centre scores the
+  mentions of each name with a candidate within 100 km, weighted up when the
+  feature's state or park is also named on the page. The best centre wins,
+  and names with no candidate near it are dropped. A **confidence gate**
+  keeps the region only if one of its states is named on the page, three
+  names agree, one feature is well known (Wikidata qrank ≥ 1000), or two
+  names agree and one has qrank ≥ 100. Otherwise the page has no location
+  and no features.
+- **distance_mi** (title first, then a body number near "round trip",
+  "total", "loop"…), **gain_ft**, **date** (from the URL, else the first
+  "Month D, YYYY" in the text).
+
+### First results (page-pass-run-1 partition 5, 2026-11-07)
+
+18,553 kept pages in under 2 minutes on one core.
+
+| field | share |
+|---|---:|
+| location | 48% |
+| 3+ features | 25% |
+| distance | 58% |
+| gain | 39% |
+| date | 59% |
+
+Page types: general 45%, article 28%, trail_guide 11%, list_article 10%,
+trip_report 5%. Eyeballing 40 located pages before the confidence gate:
+~70% placed correctly; the errors were non-US pages (Wikiloc trails in
+Cyprus or Portugal on "Hiking Trails, Minnesota") and single weak names
+("Great Wall" → Idaho, Haleakalā's "Sands Trail" → Massachusetts). After
+the gate and stoplist, ~26 of 30 placed correctly. The gate cut located
+pages from 66% to 48%.
+
+Known limits:
+
+- A page resolves to one region only.
+- The index's park attribute is sometimes off (an Arizona Mt. Baldy tagged
+  "Gila Wilderness").
+- Features on unlocated pages are discarded, even when correct (e.g. a
+  single obscure trail name on a Bay Area running blog).
+- Distances from listicles and visitor guides are often one hike's number,
+  not the page's.
+- The trip_report rate looks low.
+
+The `extract` workflow runs this over all 16 page-text partitions (Arm
+matrix) and publishes an `extract-run-<n>` release with
+`extracted-*.jsonl.gz` and a report.
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |
@@ -774,6 +837,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
+| 9: Extraction | 🟨 first pass | `scripts/extract.py` + `extract` workflow: page type, OSM features and region, distance, gain, date; 48% of pages located |
 
 ## Open questions
 
@@ -809,6 +873,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Found that the domain graph collapses blogspot (and presumably other private-PSL platforms) into one node; platform blogs need the host graph. |
 | 2026-11-07 | Stage 1–2 implemented as a single Go binary (`cmd/hubscore`) streaming the graph over HTTPS; no DuckDB needed for this stage. |
 | 2026-11-07 | All GitHub Actions jobs run on Arm runners (`ubuntu-24.04-arm`), not x86. |
+| 2026-11-07 | Extraction matches names against the Hiker Atlas autosuggest index and resolves each page to **one region**, preferring no location over a weak one. |
 | 2026-11-07 | Seeds come from the union of one graph release per year (2022–2026): recall 52% → 88%. |
 | 2026-11-07 | Stage 4 reads the CDX (zipnum) index directly for per-site lookups; Parquet is kept for later whole-index scans. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |

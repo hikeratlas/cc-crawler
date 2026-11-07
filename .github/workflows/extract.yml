@@ -1,0 +1,97 @@
+# Stage 9: first extraction pass over the page text saved by a page-pass run.
+# For every kept page: page type, OSM features (trails, peaks, lakes,
+# waterfalls, parks) matched against the Hiker Atlas autosuggest index and
+# resolved to one region, plus distance, elevation gain and date. Publishes an
+# extract-run-<n> release. All jobs run on Arm runners. See docs/DESIGN.md,
+# Stage 9.
+name: extract
+
+on:
+  workflow_dispatch:
+    inputs:
+      page_pass_release:
+        description: "page-pass release to take page text from"
+        default: "page-pass-run-1"
+        required: true
+      index_url:
+        description: "Hiker Atlas autosuggest index"
+        default: "https://public.hikeratlas.com/north-america.autosuggest.db"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # read the source release, create the extract-run-<n> release
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - name: List page-text partitions
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          parts=$(gh release view "${{ inputs.page_pass_release }}" -R "$GITHUB_REPOSITORY" --json assets \
+            -q '[.assets[].name | select(test("^pages-part-[0-9]+\\.jsonl\\.gz$")) | capture("(?<n>[0-9]+)").n | tonumber] | sort')
+          echo "partitions: $parts"
+          echo "parts=$parts" >> "$GITHUB_OUTPUT"
+
+  extract:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download index and page text
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p in out
+          curl -fsSL --retry 5 -o in/index.db "${{ inputs.index_url }}"
+          gh release download "${{ inputs.page_pass_release }}" --dir in \
+            --pattern "pages-part-${{ matrix.part }}.jsonl.gz" --pattern pages.tsv.gz
+      - name: Extract
+        run: |
+          python3 -I scripts/extract.py --index in/index.db --pages "in/pages-part-${{ matrix.part }}.jsonl.gz" \
+            --keep in/pages.tsv.gz --out "out/extracted-${{ matrix.part }}.jsonl.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extracted-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  report:
+    needs: extract
+    if: ${{ !cancelled() }}   # report whichever partitions succeeded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: extracted-*
+          path: out/
+          merge-multiple: true
+      - name: Report
+        run: |
+          ls -la out/
+          python3 -I scripts/extract_report.py --in 'out/extracted-*.jsonl.gz' --out report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="extract-run-${{ github.run_number }}"
+          gh release create "$tag" --title "Extraction (run ${{ github.run_number }})" \
+            --notes "First extraction pass over ${{ inputs.page_pass_release }}: page type, OSM features resolved to one region, distance, gain and date per kept page. extracted-*.jsonl.gz hold one JSON record per page. See report.md." \
+            --target "$GITHUB_SHA"
+          gh release upload "$tag" report.md out/*.jsonl.gz

@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""Stage 9 (first pass): extract structured facts from fetched hiking pages.
+
+For each page fetched by cmd/warcfetch (the page-pass release's
+page-text-*.jsonl.gz), this finds:
+
+  page_type      trip_report | trail_guide | list_article | article | general
+  features       named trails, hikes, peaks, lakes, waterfalls, cliffs and
+                 parks mentioned in the text, matched to OpenStreetMap through
+                 Hiker Atlas's own name index (the basemap's autosuggest.db),
+                 each with its OSM id and coordinates
+  location       where the page is about: median of the matched features
+                 that agree with each other, plus state/province and park
+  distance_mi    a route distance stated in the text (round trip, total, loop…)
+  gain_ft        elevation gain stated in the text
+  date           publication date from the URL, else the first date in the text
+
+Name matching works on capitalised phrases in the text (so "the lake trail"
+doesn't match "Lake Trail"), skips generic names ("North Trail", "Big
+Lake"), and disambiguates names used in many places ("Bush Mountain" names
+six peaks) by preferring features in states and parks the page mentions and
+features that cluster with the page's other matches. Stdlib only.
+
+Usage:
+  scripts/extract.py --index autosuggest.db --pages 'page-text-*.jsonl.gz' \
+      [--keep pages.tsv.gz] --out extracted.jsonl.gz
+"""
+import argparse
+import csv
+import glob
+import gzip
+import json
+import math
+import re
+import sqlite3
+import statistics
+import sys
+from collections import Counter, defaultdict
+
+# Names in the index that are mostly ordinary English phrases on a page.
+STOP_NAMES = {"out and back", "runner up", "back to back", "get out", "return policy", "main street",
+              "black diamond", "easter egg", "canoe launch", "great wall", "great wall of china",
+              "first aid", "day hike", "day hikes", "food storage", "bear country", "free shipping"}
+KINDS = ("trail", "hike", "peak", "lake", "waterfall", "cliff", "park")
+GENERIC = set("""
+the a an of and at on to in
+lake lakes trail trails loop path route spur connector access cutoff cut-off link
+north south east west northeast northwest southeast southwest upper lower middle
+big little main old new grand great long short high low round
+river creek brook run fork branch spring springs pond ponds falls fall cascade cascades
+park mountain mountains mount mt peak peaks hill hills ridge ridges knob bald point butte
+nature interpretive fitness bike horse equestrian multi-use multiuse service fire road
+overlook view vista lookout campground camp trailhead parking lot beach shore lakeshore
+canyon valley gap pass notch saddle meadow meadows forest woods wood island
+hiking hike hikes walk walks walking scenic historic recreation bridge best
+red blue green white black yellow orange
+""".split())
+STATES = {}
+ABBR = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California", "CO": "Colorado",
+    "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana",
+    "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota",
+    "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina",
+    "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania",
+    "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas",
+    "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
+    "WI": "Wisconsin", "WY": "Wyoming", "BC": "British Columbia", "AB": "Alberta", "SK": "Saskatchewan",
+    "MB": "Manitoba", "ON": "Ontario", "QC": "Quebec", "NB": "New Brunswick", "NS": "Nova Scotia",
+    "PE": "Prince Edward Island", "NL": "Newfoundland and Labrador", "YT": "Yukon",
+    "NT": "Northwest Territories", "NU": "Nunavut",
+}
+for _name in ABBR.values():
+    STATES[_name.lower()] = _name
+STATES["newfoundland"] = "Newfoundland and Labrador"
+STATE_RE = re.compile(r"\b(" + "|".join(re.escape(s) for s in sorted(STATES, key=len, reverse=True)) + r")\b", re.I)
+ABBR_RE = re.compile(r",\s*(" + "|".join(ABBR) + r")\b")
+
+TOKEN = re.compile(r"[A-Za-z][A-Za-z'’.\-]*|\d+")
+LOWER_OK = {"of", "the", "and", "de", "du", "la", "le", "des", "on", "at", "in", "to"}
+
+
+def norm(name):
+    s = name.lower().replace("’", "'")
+    s = re.sub(r"\bmt\.?\b", "mount", s)
+    s = re.sub(r"\bst\.?\b", "saint", s)
+    s = re.sub(r"[^a-z0-9' ]+", " ", s)
+    return " ".join(s.split())
+
+
+def load_index(path):
+    """name -> list of features; also park names for context matching."""
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    names = defaultdict(list)
+    parks = {}
+    q = (f"SELECT kind, name, osm_id, park, state, lat, lon, ele, km, qrank FROM items "
+         f"WHERE kind IN ({','.join('?' * len(KINDS))}) AND country IN ('United States','Canada')")
+    for kind, name, osm_id, park, state, lat, lon, ele, km, qrank in con.execute(q, KINDS):
+        key = norm(name)
+        toks = key.split()
+        if " ".join(toks) in STOP_NAMES:
+            continue
+        if not toks or all(t in GENERIC for t in toks):
+            continue
+        if not any(len(t) >= 3 and t.isalpha() and t not in GENERIC for t in toks):
+            continue  # needs one real distinguishing word: no "1", "Lake 3", "Big A"
+        if len(toks) == 1:
+            continue  # one-word names ("Sawtooth", "Table", "Baldy") collide with ordinary words
+        f = {"kind": kind, "name": name, "osm_id": osm_id, "park": park, "state": state,
+             "lat": float(lat), "lon": float(lon), "ele_m": ele, "km": km, "qrank": qrank or 0}
+        names[key].append(f)
+        if kind == "park" and len(toks) >= 2:
+            parks[key] = name
+    return names, parks
+
+
+def haversine_km(a, b):
+    la1, lo1, la2, lo2 = map(math.radians, (a[0], a[1], b[0], b[1]))
+    h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+    return 12742 * math.asin(min(1.0, math.sqrt(h)))
+
+
+def mentions(text, names, max_len=7):
+    """Capitalised phrases in the text that are names in the index."""
+    toks = [(m.group(0), m.start()) for m in TOKEN.finditer(text)]
+    found = Counter()
+    i = 0
+    n = len(toks)
+    while i < n:
+        w = toks[i][0]
+        if not (w[0].isupper() or w[0].isdigit()):
+            i += 1
+            continue
+        best = None
+        for j in range(min(n, i + max_len), i, -1):
+            span = [t for t, _ in toks[i:j]]
+            last = span[-1]
+            if not (last[0].isupper() or last[0].isdigit()):
+                continue
+            if any(not (t[0].isupper() or t[0].isdigit() or t.lower() in LOWER_OK) for t in span):
+                continue
+            key = norm(" ".join(span))
+            if key in names:
+                best = (key, j)
+                break
+        if best:
+            found[best[0]] += 1
+            i = best[1]
+        else:
+            i += 1
+    return found
+
+
+def fast_km(a, b):
+    """Equirectangular distance: accurate enough at the ~100 km scale."""
+    x = math.radians(b[1] - a[1]) * math.cos(math.radians((a[0] + b[0]) / 2))
+    y = math.radians(b[0] - a[0])
+    return 6371 * math.hypot(x, y)
+
+
+def resolve(found, names, ctx_states, ctx_parks, radius_km=100, max_cands=25):
+    """Pick the page's region, then one feature per name within it.
+
+    Every candidate location is tried as the page's centre. A centre scores,
+    for each mentioned name, its best candidate within radius_km: mentions x
+    weight, where weight is 1, +1 if the feature's state is named on the page,
+    +2 if its park is. Each name counts once per centre. The best centre wins;
+    names with no candidate near it are dropped (a page is about one area).
+    """
+    def weight(f):
+        w = 1.0
+        if f["state"] in ctx_states:
+            w += 1.0
+        if f["park"] and norm(f["park"]) in ctx_parks:
+            w += 2.0
+        return w
+
+    cands = {}
+    for key in found:
+        cs = sorted(names[key], key=lambda f: (-weight(f), -f["qrank"]))[:max_cands]
+        cands[key] = [(f, weight(f), (f["lat"], f["lon"])) for f in cs]
+    if not cands:
+        return [], None
+    centres = [p for cs in cands.values() for _, _, p in cs]
+    best, best_score = None, -1.0
+    for c in centres:
+        score = 0.0
+        for key, cs in cands.items():
+            m = max((w for _, w, p in cs if fast_km(c, p) <= radius_km), default=0.0)
+            score += found[key] * m
+        if score > best_score:
+            best, best_score = c, score
+    kept = []
+    for key, cs in cands.items():
+        near = [(w, -fast_km(best, p), f) for f, w, p in cs if fast_km(best, p) <= radius_km]
+        if near:
+            kept.append((key, max(near, key=lambda t: (t[0], t[1]))[2]))
+    if not kept:
+        return [], None
+    # Confidence gate: a weak match ("Great Wall", "Lynn Hill") must not place
+    # a page in a state the page never names. Accept the region when one of
+    # its states is named on the page, three names agree, one feature is
+    # well known (qrank >= 1000: Mount Shasta, Havasu Falls), or two names
+    # agree and one is moderately known (qrank >= 100).
+    top = max(f["qrank"] for _, f in kept)
+    if not (any(f["state"] in ctx_states for _, f in kept) or len(kept) >= 3 or top >= 1000
+            or (len(kept) >= 2 and top >= 100)):
+        return [], None
+    pts = [(f["lat"], f["lon"]) for k, f in kept for _ in range(found[k])]
+    centre = (statistics.median(p[0] for p in pts), statistics.median(p[1] for p in pts))
+    return kept, centre
+
+
+NUM = r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)"
+DIST_CTX = re.compile(r"round[- ]?trip|roundtrip|total|distance|length|loop|one[- ]way|out[- ]and[- ]back|in and out", re.I)
+DIST = re.compile(NUM + r"\s*(?:-|\s)?(miles?|mi\b|km\b|kilomet(?:er|re)s?)", re.I)
+GAIN = re.compile(r"(?:elevation gain|elevation change|total gain|gain|climb(?:ing)?|ascent|vertical)\s*(?:of|:|is|was|=)?\s*"
+                  r"(?:about|approximately|approx\.?|around|roughly|~|nearly|over|just over)?\s*" + NUM +
+                  r"\s*(feet|ft\b|foot|m\b|meters|metres|')", re.I)
+GAIN2 = re.compile(NUM + r"\s*(feet|ft\b|foot|m\b|meters|metres|')\s*(?:of\s+)?(?:elevation gain|gain|climbing|of climbing|vertical)", re.I)
+URL_DATE = re.compile(r"/((?:19|20)\d\d)/(\d{1,2})(?:/(\d{1,2}))?/")
+TEXT_DATE = re.compile(r"\b(January|February|March|April|May|June|July|August|September|October|November|December)"
+                       r"\s+(\d{1,2}),?\s+((?:19|20)\d\d)\b")
+MONTHS = {m: i for i, m in enumerate(["January", "February", "March", "April", "May", "June", "July", "August",
+                                       "September", "October", "November", "December"], 1)}
+FIELDS = re.compile(r"\b(distance|length|elevation gain|difficulty|trailhead|trail type|route type|"
+                    r"dogs allowed|best season|time required|hiking time|permits?)\s*:", re.I)
+LISTY = re.compile(r"^\s*\d{1,2}\s|\b(best|top \d+|(?<![-/\d])\d{1,2} (?:best|great|easy|amazing|incredible|epic)|things to do|"
+                   r"where to|guide to|ultimate guide)\b", re.I)
+FIRST_PAST = re.compile(r"\b(i|we)\s+(hiked|started|reached|arrived|climbed|walked|camped|decided|made it|"
+                        r"headed|parked|set off|got to|turned around|summited|continued|spent)\b", re.I)
+
+
+def num(s):
+    return float(s.replace(",", ""))
+
+
+def distance_mi(text, title=""):
+    # A distance in the title ("Celo Knob (7.3 miles)") is the hike's own;
+    # in the body it needs a context word (round trip, total, loop...).
+    for m in DIST.finditer(title or ""):
+        v = num(m.group(1)) * (0.621371 if m.group(2).lower().startswith("k") else 1)
+        if 0.2 <= v <= 300:
+            return round(v, 1)
+    for m in DIST.finditer(text):
+        ctx = text[max(0, m.start() - 60): m.end() + 40]
+        if not DIST_CTX.search(ctx):
+            continue
+        v = num(m.group(1))
+        if m.group(2).lower().startswith("k"):
+            v *= 0.621371
+        if 0.2 <= v <= 300:
+            return round(v, 1)
+    return None
+
+
+def gain_ft(text):
+    for rx in (GAIN, GAIN2):
+        m = rx.search(text)
+        if m:
+            v = num(m.group(1))
+            unit = m.group(2).lower()
+            if unit.startswith("m"):
+                v *= 3.28084
+            if 50 <= v <= 30000:
+                return int(round(v, -1))
+    return None
+
+
+def page_date(url, text):
+    m = URL_DATE.search(url)
+    if m:
+        y, mo = int(m.group(1)), int(m.group(2))
+        if 1 <= mo <= 12:
+            d = int(m.group(3)) if m.group(3) else None
+            return f"{y:04d}-{mo:02d}" + (f"-{d:02d}" if d and 1 <= d <= 31 else "")
+    m = TEXT_DATE.search(text)
+    if m:
+        return f"{int(m.group(3)):04d}-{MONTHS[m.group(1)]:02d}-{int(m.group(2)):02d}"
+    return None
+
+
+def page_type(title, text, n_features):
+    past = len(FIRST_PAST.findall(text))
+    if past >= 4:   # a story told in the first person, even with a stats box
+        return "trip_report"
+    if len(FIELDS.findall(text)) >= 2:
+        return "trail_guide"
+    if LISTY.search(title or ""):
+        return "list_article"
+    if past >= 2:
+        return "trip_report"
+    if n_features == 0:
+        return "general"
+    return "article"
+
+
+def extract(page, names, parks):
+    text = page.get("text") or ""
+    title = page.get("title") or ""
+    full = title + "\n" + text
+    ctx_states = Counter(STATES[m.group(1).lower()] for m in STATE_RE.finditer(full))
+    for m in ABBR_RE.finditer(full):
+        ctx_states[ABBR[m.group(1)]] += 1
+    found = mentions(full, names)
+    ctx_parks = {k for k in found if k in parks}
+    kept, centre = resolve(found, names, ctx_states, ctx_parks)
+    feats = sorted(({"name": f["name"], "kind": f["kind"], "osm_id": f["osm_id"], "mentions": found[k],
+                     "lat": round(f["lat"], 5), "lon": round(f["lon"], 5), "park": f["park"], "state": f["state"],
+                     **({"ele_m": f["ele_m"]} if f["ele_m"] else {}), **({"km": f["km"]} if f["km"] else {})}
+                    for k, f in kept), key=lambda f: (-f["mentions"], f["name"]))
+    loc = None
+    if feats:
+        states = Counter(f["state"] for f in feats if f["state"])
+        pk = Counter(f["park"] for f in feats if f["park"])
+        loc = {"lat": round(centre[0], 4), "lon": round(centre[1], 4),
+               "state": states.most_common(1)[0][0] if states else None,
+               "park": pk.most_common(1)[0][0] if pk else None}
+    return {
+        "url": page["url"], "site": page.get("row", {}).get("site"), "title": title,
+        "page_type": page_type(title, text, len(feats)), "location": loc, "features": feats[:25],
+        "distance_mi": distance_mi(text, title), "gain_ft": gain_ft(text), "date": page_date(page["url"], text),
+        "words": page.get("words"),
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--index", required=True, help="Hiker Atlas autosuggest.db")
+    ap.add_argument("--pages", nargs="+", required=True, help="warcfetch outputs (.jsonl[.gz]; globs allowed)")
+    ap.add_argument("--keep", help="pages.tsv.gz from page_pass.py: only extract these URLs")
+    ap.add_argument("--out", required=True)
+    args = ap.parse_args()
+
+    names, parks = load_index(args.index)
+    print(f"index: {len(names):,} names, {len(parks):,} park names", file=sys.stderr)
+    keep = None
+    if args.keep:
+        with gzip.open(args.keep, "rt") as f:
+            keep = {r["url"] for r in csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE)}
+    n = 0
+    stats = Counter()
+    with gzip.open(args.out, "wt") as out:
+        for path in sorted({p for pat in args.pages for p in glob.glob(pat)}):
+            op = gzip.open if path.endswith(".gz") else open
+            with op(path, "rt") as f:
+                for line in f:
+                    page = json.loads(line)
+                    if page.get("error") or (keep is not None and page["url"] not in keep):
+                        continue
+                    r = extract(page, names, parks)
+                    out.write(json.dumps(r, ensure_ascii=False) + "\n")
+                    n += 1
+                    stats[r["page_type"]] += 1
+                    stats["located"] += r["location"] is not None
+                    stats["distance"] += r["distance_mi"] is not None
+                    stats["gain"] += r["gain_ft"] is not None
+    print(f"{n:,} pages; " + ", ".join(f"{k} {v:,}" for k, v in stats.most_common()), file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
