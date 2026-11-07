@@ -690,6 +690,29 @@ outputs in the `site-content-run-1` release. ~43k pages fetched in 49 min
   Publishes the final page list, a site table with `site_kind`, and the
   fetched page text, ready for the richer extraction later.
 
+### Page pass run 1 results (2026-11-07)
+
+Report: [`data/reports/stage7_page-pass-run-1.md`](../data/reports/stage7_page-pass-run-1.md).
+Outputs in the `page-pass-run-1` release: `pages.tsv.gz` (the current
+deliverable), `sites.tsv.gz`, and `page-text-part-*.jsonl.gz` (the fetched
+text of all 324k pages, for later extraction).
+
+- All 323,762 candidate pages were fetched; **262,586 were kept** (81%) at
+  relevance ≥ 0.3, across 4,403 sites. From the unseen-sample test,
+  expected precision is ~73% (from 63%) with ~92% of relevant pages
+  retained.
+- **Site kind:** at the original 0.5 cutoff, only 9 of 25 known blogs
+  matched their authorship label. Personal blogs written as trail guides
+  (modernhiker.com, hikespeak.com, roadtripryan.com) use little first
+  person and score 0.2–0.45. As a *ranking*, `personal_score` does better:
+  on 188 sites with hand labels (spot-check pages plus known blogs) its
+  **AUC is 0.79**. At ≥ 0.35 it's ~72% precise for personal sites with
+  ~59% recall (somewhat optimistic, since these sites overlap the training
+  labels). The default cutoff is now 0.35 (1,643 sites, 63,851 kept pages). Downstream users
+  should treat `personal_score` as a sort key, not a verdict. Better
+  signals would be site-level: number of distinct bylines, site size,
+  graph prominence, and about pages.
+
 ## Stage 8: Measure recall with WET samples
 
 The graph-based funnel can't see blogs that don't link to our hubs. To measure
@@ -749,7 +772,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 7: Content spot checks | 🟨 page pass | site-content run 1: 324k URLs, 63% ± 8% (measured); page pass running |
+| 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
 
 ## Open questions
