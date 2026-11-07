@@ -196,7 +196,17 @@ connection drops. Self-links are ignored. Rows are emitted for every domain
 linking to ≥ 1 hub, plus every eval domain, even with zero hubs.
 
 Run it with the [`graph-seeds`](../.github/workflows/graph-seeds.yml)
-workflow (manual dispatch), or locally with `go run ./cmd/hubscore`.
+workflow (manual dispatch, Arm runners), or locally with
+`go run ./cmd/hubscore -release <release>`. The workflow takes a list of
+releases, scores each in its own matrix job (at most two at once), and merges
+them in `scripts/seed_report.py`. A domain's hubs are the union across
+releases, and the report shows per-release coverage of the eval lists.
+
+Releases checked to exist with the same file layout (Nov 2026):
+`cc-main-2026-jul-aug-sep`, `cc-main-2025-may-jun-jul`,
+`cc-main-2024-may-jun-jul`, `cc-main-2023-may-sep-nov`,
+`cc-main-2022-may-jun-aug`. These are the workflow's default set, one
+per year.
 
 **Output:** `domain_hub_scores.tsv.gz` with `id, domain, n_hosts, out_degree,
 n_hubs, weight_sum, categories, hubs, in_eval`; `hub_stats.tsv` with each
