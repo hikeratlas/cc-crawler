@@ -1,17 +1,20 @@
-# Stages 1–3 (first cut): score every domain in a Common Crawl domain web graph
-# against data/hubs.csv, then rank seeds and report recall on data/eval/.
-# See docs/DESIGN.md.
+# Stages 1–3 (first cut): score every domain in one or more Common Crawl
+# domain web graphs against data/hubs.csv, merge the releases, then rank seeds
+# and report recall on data/eval/. See docs/DESIGN.md.
 #
-# Outputs are uploaded as a workflow artifact and attached to a GitHub release
-# named graph-seeds-<release>.
+# Each release is scored in its own job (at most two at once, to go easy on
+# Common Crawl's CDN). Outputs are uploaded as workflow artifacts and attached
+# to a GitHub release named graph-seeds-run-<run number>.
+#
+# All jobs run on Arm runners.
 name: graph-seeds
 
 on:
   workflow_dispatch:
     inputs:
-      release:
-        description: "Web graph release (see https://index.commoncrawl.org/graphinfo.json)"
-        default: "cc-main-2026-jul-aug-sep"
+      releases:
+        description: "Comma-separated web graph releases (see https://commoncrawl.org/web-graphs)"
+        default: "cc-main-2026-jul-aug-sep,cc-main-2025-may-jun-jul,cc-main-2024-may-jun-jul,cc-main-2023-may-sep-nov,cc-main-2022-may-jun-aug"
         required: true
       min_hubs:
         description: "Seed threshold: minimum distinct hubs linked"
@@ -23,18 +26,33 @@ on:
         default: true
 
 permissions:
-  contents: write   # create/update the graph-seeds-<release> release
-
-concurrency:
-  group: graph-seeds-${{ inputs.release }}
-  cancel-in-progress: false
+  contents: write   # create the graph-seeds-run-<n> release
 
 jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      releases: ${{ steps.split.outputs.releases }}
+    steps:
+      - id: split
+        env:
+          RELEASES: ${{ inputs.releases }}
+        run: |
+          json=$(python3 -c 'import json, os; print(json.dumps([r.strip() for r in os.environ["RELEASES"].split(",") if r.strip()]))')
+          echo "releases=$json" >> "$GITHUB_OUTPUT"
+          echo "$json"
+
   score:
-    runs-on: ubuntu-24.04-arm   # Arm runner (free for public repos); use Arm for every job
+    needs: plan
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        release: ${{ fromJSON(needs.plan.outputs.releases) }}
     env:
-      RELEASE: ${{ inputs.release }}
+      RELEASE: ${{ matrix.release }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,50 +61,88 @@ jobs:
           go-version-file: go.mod
 
       - name: Check graph files exist
+        # Common Crawl's CDN answers bursts with 403, so a single 403 does not
+        # mean the file is missing. Retry before giving up.
         run: |
           base="https://data.commoncrawl.org/projects/hyperlinkgraph/$RELEASE/domain/$RELEASE-domain"
           for f in vertices edges; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -r 0-0 "$base-$f.txt.gz")
-            echo "$f: HTTP $code"
-            if [ "$code" != 206 ] && [ "$code" != 200 ]; then
-              echo "::error::$RELEASE is missing its $f file (HTTP $code). Pick another release."
+            ok=
+            for i in 1 2 3 4 5 6; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -r 0-0 "$base-$f.txt.gz")
+              if [ "$code" = 206 ] || [ "$code" = 200 ]; then ok=1; break; fi
+              echo "$f: HTTP $code (attempt $i)"; sleep $((i * 10))
+            done
+            if [ -z "$ok" ]; then
+              echo "::error::$RELEASE: $f file not reachable (last HTTP $code). It may be missing or Common Crawl may be throttling."
               exit 1
             fi
+            echo "$f: ok"
           done
 
       - name: Build
         run: go build -o hubscore ./cmd/hubscore
 
-      - name: Score domains against hubs (streams ~9.5 GB)
+      - name: Score domains against hubs (streams ~9 GB)
         run: |
-          mkdir -p out
+          mkdir -p "out/$RELEASE"
           ./hubscore -release "$RELEASE" \
-            -out out/domain_hub_scores.tsv.gz \
-            -hub-out out/hub_stats.tsv \
-            -meta-out out/meta.json
-          cat out/meta.json
+            -out "out/$RELEASE/domain_hub_scores.tsv.gz" \
+            -hub-out "out/$RELEASE/hub_stats.tsv" \
+            -meta-out "out/$RELEASE/meta.json"
+          cat "out/$RELEASE/meta.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scores-${{ matrix.release }}
+          path: out/
+          retention-days: 30
+
+  report:
+    needs: score
+    if: ${{ !cancelled() }}   # report on whichever releases succeeded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: scores-*
+          path: out/
+          merge-multiple: true
 
       - name: Rank seeds and write report
         run: |
-          python3 -I scripts/seed_report.py out/domain_hub_scores.tsv.gz out/hub_stats.tsv \
-            --meta out/meta.json --min-hubs "${{ inputs.min_hubs }}" \
+          runs=()
+          for d in out/*/; do [ -f "$d/meta.json" ] && runs+=(--run "$d"); done
+          if [ ${#runs[@]} -eq 0 ]; then echo "::error::no release was scored successfully"; exit 1; fi
+          python3 -I scripts/seed_report.py "${runs[@]}" --min-hubs "${{ inputs.min_hubs }}" \
             --seeds-out out/seeds.tsv.gz --report-out out/report.md
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: graph-seeds-${{ inputs.release }}
-          path: out/
+          name: graph-seeds-report
+          path: |
+            out/seeds.tsv.gz
+            out/report.md
           retention-days: 30
 
       - name: Publish release assets
         if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASES: ${{ inputs.releases }}
         run: |
-          tag="graph-seeds-$RELEASE"
-          gh release view "$tag" >/dev/null 2>&1 || \
-            gh release create "$tag" --title "Graph seeds: $RELEASE" \
-              --notes "Domain hub scores and ranked seeds from the $RELEASE domain web graph. See report.md." \
-              --target "$GITHUB_SHA"
-          gh release upload "$tag" out/* --clobber
+          tag="graph-seeds-run-${{ github.run_number }}"
+          gh release create "$tag" --title "Graph seeds (run ${{ github.run_number }})" \
+            --notes "Hub scores and ranked seeds merged from: $RELEASES. See report.md." \
+            --target "$GITHUB_SHA"
+          gh release upload "$tag" out/seeds.tsv.gz out/report.md
+          for d in out/*/; do
+            r=$(basename "$d")
+            [ -f "$d/meta.json" ] || continue
+            cp "$d/domain_hub_scores.tsv.gz" "out/$r-domain_hub_scores.tsv.gz"
+            cp "$d/hub_stats.tsv" "out/$r-hub_stats.tsv"
+            cp "$d/meta.json" "out/$r-meta.json"
+            gh release upload "$tag" "out/$r-domain_hub_scores.tsv.gz" "out/$r-hub_stats.tsv" "out/$r-meta.json"
+          done
