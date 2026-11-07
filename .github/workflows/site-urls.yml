@@ -115,6 +115,10 @@ jobs:
         with:
           name: plan
           path: plan/
+      - name: Show this runner's public IP
+        # Lets us tell whether parallel jobs share an egress IP (and so a rate limit).
+        run: |
+          echo "public IP: $(curl -s -m 10 https://checkip.amazonaws.com || echo unknown)"
       - name: Build
         run: go build -o sitecdx ./cmd/sitecdx
       - name: Look up captures in each crawl (CDX index)
