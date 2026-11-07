@@ -444,8 +444,41 @@ requests, not bytes) and defaults to 2 concurrent requests. A crawl lookup for
   matching pages). Sites that are dropped: `shop` (≥ 25% commerce paths and
   more than hiking paths), `gear` (≥ 45% gear-review paths), `off_topic`,
   `thin` (< 5 pages captured) and `non_english`.
-- Workflow: [`site-urls`](../.github/workflows/site-urls.yml) (Arm, matrix
-  over crawls).
+- Workflow: [`site-urls`](../.github/workflows/site-urls.yml) (Arm). The
+  site list is split round-robin into N partitions. Each partition is one
+  job that looks its sites up in every crawl, then scores them
+  (`site_report.py score`). A final job merges the per-site rows
+  (`site_report.py report`). No job ever holds more than its own sites.
+- **Two passes**, because all ~89k seeds × 5 crawls × 4 blocks would be
+  ~180M index lines:
+  1. *classify*: all seeds, two crawls (one old, one recent), 1 block per
+     site, which is enough to judge a site;
+  2. *harvest*: only `hiking`/`mixed`/`drifted` sites from pass 1, all
+     crawls, up to 4 blocks per site, producing the candidate URL list.
+
+Fixes after the first top-3,000 run (site-urls run 1):
+
+- **Block sampling bias:** the per-site cap used to take a site's
+  alphabetically *first* blocks. A forum-heavy or long site was judged by
+  whatever sorts first, e.g. `/forum/search.php` pages. `sitecdx` now picks
+  evenly spaced blocks across the site's range.
+- **Per-page language:** a page counts only if Common Crawl detects English
+  *and* its path has no non-English locale prefix (`/de/`, `/fr-ca/`).
+  Everything else is measured over English pages only, so a site with a
+  big localized section (visitutah.com) is no longer `non_english`.
+- **Other activities:** jeep, 4x4, ATV, OHV, overlanding, mountain biking,
+  golf, wine, breweries and horseback make a page not match. A site whose
+  name contains one of these unambiguous terms (trailsoffroad.com) is
+  `other_activity`.
+- **Drift:** login, user, profile and phpBB utility pages are boilerplate.
+  A site counts as `drifted` only if its newest crawl is mostly *new* URLs
+  across ≥ 3 sections of the site (mountaineers.org's newest crawl was a
+  single feedback forum).
+- `sitecdx -html-only` (default) keeps only status-200 HTML captures,
+  ~22% fewer rows.
+- Known limit: forum sites (oregonhikers.org is ~99% phpBB) have no words
+  in their topic URLs, so URL scoring can't judge them; content checks
+  (Stage 7) can.
 
 Calibration notes from the eval lists (one crawl, CC-MAIN-2023-40):
 
