@@ -57,6 +57,26 @@ work is done by three cheap Common Crawl datasets:
 3. **WARC range requests.** `warc_filename + offset + length` fetches one record
    (~10–50 KB) without downloading the 1 GB WARC it lives in.
 
+## Unit of identity: the *site*
+
+Everything downstream is keyed on a **site**, not a registered domain:
+
+- Normally, a site is the **registered domain** (`sectionhiker.com`).
+- Under **blog-platform parents** (`blogspot.com`, `wordpress.com`,
+  `github.io`, `wixsite.com`, `weebly.com`, `tumblr.com`, `typepad.com`, …), a
+  site is the **host** (`1happyhiker.blogspot.com`).
+- Later, possibly a **host + path prefix** for path-based platforms
+  (`medium.com/@user`).
+
+The platform parent list lives in one place:
+[`data/platforms.csv`](../data/platforms.csv). A single function maps a URL or
+host to its site. Graph stages and index stages all use it, so adding platform
+blogs is a matter of feeding in more inputs, not reworking the schema.
+
+The columnar index supports this directly. `url_host_name` (or a SURT prefix
+such as `com,blogspot,1happyhiker)`) selects a single platform blog as cheaply
+as `url_host_registered_domain` selects a domain.
+
 ---
 
 ## Stage 0: Reference data and evaluation set
@@ -78,14 +98,16 @@ Before building anything clever, create a way to tell whether it works.
     too generic. Those need the host graph. `pc.gc.ca` is fine because `gc.ca` is
     a public suffix.
 - **[`data/eval/known_blogs.csv`](../data/eval/known_blogs.csv)**: hand-verified
-  US/Canada hiking blogs, used to measure seed recall. Columns:
-  `domain, region, type, split, notes`. Each row is split `dev`/`holdout`; only
+  US/Canada hiking sites that should come out, magazines included. Used to
+  measure seed recall. Columns: `domain, region, type, authorship, split,
+  notes`. `authorship` (`personal`/`community`/`professional`) is the ground
+  truth for `site_kind`. Each row is split `dev`/`holdout`; only
   tune thresholds against `dev`. `type` (`personal_blog`, `guide_site`,
   `multi_author`, `mixed_travel`, `magazine`) lets us report recall per kind of
   site.
 - **[`data/eval/negatives.csv`](../data/eval/negatives.csv)**: domains that
   should *not* come out (retailers, gear reviews, aggregators, tourism boards,
-  SEO listicles, magazines for now), with a `reason`.
+  SEO listicles, expired domains), with a `reason`.
 - **Gazetteers** for later stages. US/Canadian state and province names and
   abbreviations, plus multi-token park, summit and trail names from GNIS (US),
   CGNDB (Canada), and/or the hikeratlas OSM extracts.
@@ -177,6 +199,33 @@ Expected runtime is tens of minutes on one runner. Mostly I/O and gunzip; use
 hub_weight_sum, categories, out_degree`, kept only for domains with
 `hub_links ≥ 1`.
 
+Write the aggregator so its inputs are generic: a vertices stream, an edges
+stream, a `node → hub` map, and a `node → site` filter. Stage 2b then reuses
+it unchanged.
+
+## Stage 2b: Host-graph pass for platform blogs
+
+Same scoring as Stage 2, on the **host-level graph** (2026-aug-sep-oct:
+~243M hosts, ~2.4B edges; 48 vertices files totalling ~1.7 GiB and 192 edges
+files totalling ~10.9 GiB).
+
+1. Stream the host vertices once and keep two id sets:
+   - **hub hosts**: every host whose registered domain is in `hubs.csv`
+     (`www.alltrails.com`, `alltrails.com`, `m.alltrails.com`, …), mapped back
+     to its hub;
+   - **platform hosts**: every host under a platform parent (blogspot alone is
+     ~4M hosts).
+   Both fit comfortably in memory as integer sets.
+2. Stream the edges, keeping only edges from platform hosts to hub hosts, and
+   aggregate per source host as in Stage 2. The edges are split into 192
+   files, so this can be a matrix (e.g. 8 jobs × 24 files) followed by a
+   merge.
+3. Feed the results into Stage 3 alongside the domain-level scores, with
+   `site = host`.
+
+Cost is roughly 1.5× the domain pass, spread across a matrix. Doing it later is
+cheap provided the site abstraction above is in place from the start.
+
 ## Stage 3: Turn hub scores into seed domains
 
 Start with a simple, explainable score and refine it against the eval set:
@@ -196,6 +245,18 @@ Filters:
   ccTLDs.
 - Apply `negatives.csv`.
 
+**Classify the site** (`site_kind`) so that output can be curated for a
+diverse mix of voices. Professional content counts. It's just labelled.
+
+- `personal`: individual bloggers and trip-report sites;
+- `community`: multi-author or user-submitted (The Trek, forums);
+- `professional`: magazines, media, commercial guide publishers.
+
+Heuristics to start, no LLM: the curated lists, graph prominence (harmonic
+rank and `num_hosts`; magazines sit far higher than personal blogs), number
+of distinct authors and bylines (Stage 4/7), and ad and affiliate density
+(Stage 7). Treat it as a soft label with a confidence.
+
 **Blog platforms need special handling.** The domain graph aggregates hosts
 into pay-level domains using the [public suffix list](https://publicsuffix.org),
 but **only its ICANN section**. In practice, every hosted-blog platform
@@ -211,11 +272,8 @@ Consequences:
 
 - Blogs on their **own domain** (most established hiking blogs) work in the
   domain graph.
-- **Platform-hosted blogs need the host-level graph.** It has ~243M nodes and
-  ~2.4B edges, split into 48 vertices files and 192 edges files. Run the same
-  hub scoring on it, restricted to hosts under the platform parents. Hub ids
-  for the host graph would be the hubs' main hosts (e.g. `www.alltrails.com`,
-  `alltrails.com`).
+- **Platform-hosted blogs need the host-level graph.** See Stage 2b. They are
+  probably where much of the grassroots, small-audience content lives.
 - Medium also puts blogs in paths (`medium.com/@user`), which neither graph can
   separate. Defer those to Stage 4's URL-level matching.
 - `data/eval/known_blogs.csv` includes one blogspot blog
@@ -270,7 +328,7 @@ From accepted domains, keep URLs that:
 Then tag each URL:
 
 - `slug_match`: whether the slug has hiking terms and/or a US/CA place;
-- `domain_score`: the score from Stage 3 and 4.
+- `site_score` and `site_kind`: from Stages 3 and 4.
 
 URLs from strong domains are kept **even without** a slug match. Many good
 posts have slugs like `/day-3/`.
@@ -278,7 +336,7 @@ posts have slugs like `/day-3/`.
 **Output:** `candidates/<crawl>.parquet` plus a rolled-up `urls.parquet`,
 published as a GitHub Release asset or a Hugging Face dataset.
 
-**Columns:** `url, domain, crawl, fetch_time, slug_match, domain_score,
+**Columns:** `url, site, site_kind, crawl, fetch_time, slug_match, site_score,
 warc_filename, warc_record_offset, warc_record_length, content_digest`.
 
 ## Stage 6: Snowball (expand the seeds)
@@ -352,6 +410,7 @@ Conventions:
 ```
 docs/DESIGN.md          ← this file
 data/hubs.csv           ← hub domains, weights, categories
+data/platforms.csv      ← blog-platform parents where site = host
 data/eval/              ← known_blogs.csv, negatives.csv
 data/gazetteer/         ← (generated or downloaded) place names
 src/                    ← pipeline code (language TBD; likely Python + DuckDB, plus a small Go/Rust streamer if needed)
@@ -365,6 +424,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 0: Reference data and eval set | 🟨 drafted, in review | `hubs.csv`, `known_blogs.csv`, `negatives.csv` drafted; graph presence checked against `cc-main-2026-jul-aug-sep` |
 | 1: Graph release and hub IDs | ⬜ not started | Latest release missing vertices file (see above) |
 | 2: Edge stream and hub scoring | ⬜ not started | |
+| 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
 | 3: Seed domains | ⬜ not started | |
 | 4: URL index validation | ⬜ not started | |
 | 5: Candidate URL list | ⬜ not started | **First deliverable** |
@@ -382,9 +442,10 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
   catch blogs that were dormant during one window?
 - How should we treat general travel blogs that only sometimes cover hiking?
   (Current plan: keep them at the URL level, ranked lower at the domain level.)
-- Platform-hosted blogs (blogspot, wordpress.com, medium, …) all collapse in the
-  domain graph. Is a host-graph pass worth its cost (~11 GB of edges) in the
-  first version, or should those wait for URL-level matching?
+- How well can `site_kind` be inferred without an LLM? Measure it against the
+  labelled rows in `known_blogs.csv`.
+- Path-based platforms (`medium.com/@user`): worth handling, or rare for this
+  topic?
 - Where should outputs live long-term: GitHub Releases or a Hugging Face dataset?
 
 ## Decision log
@@ -394,6 +455,10 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Focus on **blogs** only; official pages deferred. |
 | 2026-11-07 | Repo is public so Actions minutes are free; **no LLM budget** to start. |
 | 2026-11-07 | First deliverable is a **URL list** (with WARC pointers for later extraction). |
-| 2026-11-07 | Magazines (Backpacker, Outside, Explore) treated as negatives for now; revisit. |
+| 2026-11-07 | Magazines **count**, flagged `site_kind = professional` so output can be curated for diversity. |
+| 2026-11-07 | Mixed travel blogs that often cover hiking count. |
+| 2026-11-07 | Listicle-style guide sites (e.g. vancouvertrails.com) are hubs, not blogs. |
+| 2026-11-07 | Dropped candidate hubs: trailforks, mountainproject, komoot, npca, nationalparks.org, americantrails, railstotrails. |
+| 2026-11-07 | Everything is keyed on **site** (domain, or host under blog platforms) so platform blogs (Stage 2b) slot in without rework. |
 | 2026-11-07 | Found that the domain graph collapses blogspot (and presumably other private-PSL platforms) into one node; platform blogs need the host graph. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |

@@ -7,7 +7,7 @@ oregonhikers.org,trail_db,1.5,active,Oregon field guide wiki and forum
 hikearizona.com,trail_db,1.5,active,HAZ community trip reports
 hikingupward.com,trail_db,1.5,active,Mid-Atlantic hike guides (VA/WV/MD)
 greentrailsmaps.com,trail_db,1.5,active,WA/OR trail map publisher; found via the ranks keyword scan
-vancouvertrails.com,trail_db,1.5,active,BC trail guide (also a personal site; see known_blogs)
+vancouvertrails.com,trail_db,1.5,active,"BC trail guide; blog articles are mainly listicles, so treated as a hub rather than a blog"
 trailpeak.com,trail_db,1.5,active,Canadian trail DB
 clubtread.com,trail_db,1.5,active,BC hiking forum and trip reports
 nwhikers.net,trail_db,1.5,active,PNW trip-report forum
@@ -53,14 +53,14 @@ adk.org,trail_org,1.5,active,Adirondack Mountain Club
 outdoors.org,trail_org,1.5,active,Appalachian Mountain Club
 mountaineers.org,trail_org,1.5,active,
 carolinamountainclub.org,trail_org,1.5,active,
-americantrails.org,trail_org,0.5,candidate,Trail policy/advocacy; may skew professional
-railstotrails.org,trail_org,0.5,candidate,Skews cycling
+americantrails.org,trail_org,0.0,excluded,Trail policy/advocacy; may skew professional; dropped after review (2026-11-07)
+railstotrails.org,trail_org,0.0,excluded,Skews cycling; dropped after review (2026-11-07)
 usda.gov,permits_parks,0.0,excluded,fs.usda.gov collapses into usda.gov (all of USDA) in the domain graph; needs host graph
 canada.ca,permits_parks,0.0,excluded,parks.canada.ca collapses into canada.ca (all of the federal government); needs host graph
-nationalparks.org,advocacy,0.0,candidate,National Park Foundation; donors/news; probably too generic
-npca.org,advocacy,0.0,candidate,Advocacy; probably too generic
-trailforks.com,other_activity,0.0,candidate,Mountain biking; could add at low weight
-mountainproject.com,other_activity,0.0,candidate,Climbing; could add at low weight
+nationalparks.org,advocacy,0.0,excluded,National Park Foundation; donors/news; probably too generic; dropped after review (2026-11-07)
+npca.org,advocacy,0.0,excluded,Advocacy; probably too generic; dropped after review (2026-11-07)
+trailforks.com,other_activity,0.0,excluded,Mountain biking; could add at low weight; dropped after review (2026-11-07)
+mountainproject.com,other_activity,0.0,excluded,Climbing; could add at low weight; dropped after review (2026-11-07)
 strava.com,too_generic,0.0,excluded,Running and cycling dominate
-komoot.com,too_generic,0.0,candidate,Route planner; European skew
+komoot.com,too_generic,0.0,excluded,Route planner; European skew; dropped after review (2026-11-07)
 localhikes.com,trail_db,0.0,excluded,Now redirects to AllTrails

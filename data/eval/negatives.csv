@@ -9,10 +9,7 @@ tripadvisor.com,aggregator,
 onlyinyourstate.com,seo_listicle,
 theoutbound.com,aggregator,User-submitted adventure listings
 10adventures.com,aggregator,Commercial trail guide aggregator; borderline
-backpacker.com,magazine,Borderline: hiking content but not a blog. Decide policy
-outsideonline.com,magazine,
-nationalgeographic.com,magazine,
-explore-mag.com,magazine,"Canadian outdoor magazine; same policy question as backpacker.com"
+nationalgeographic.com,too_general,Hiking content is a tiny fraction; let URL-level matching pick up individual articles
 backpackinglight.com,forum_magazine,Gear-heavy membership site and forum
 travelalberta.com,tourism_board,
 visitutah.com,tourism_board,

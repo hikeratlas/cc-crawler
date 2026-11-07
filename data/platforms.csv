@@ -1,0 +1,11 @@
+parent,site_rule,notes
+blogspot.com,host,Verified: collapsed into a single com.blogspot node (~4.0M hosts) in the domain graph
+wordpress.com,host,
+github.io,host,
+wixsite.com,host,Wix free sites are usually user.wixsite.com/sitename; may need host+path later
+weebly.com,host,
+tumblr.com,host,
+typepad.com,host,
+squarespace.com,host,Most Squarespace blogs use custom domains (already their own site)
+substack.com,host,Custom-domain Substacks are already their own site
+medium.com,host_path,medium.com/@user blogs need host + first path segment; user.medium.com subdomains need host
