@@ -1,0 +1,316 @@
+// Command sitecdx implements the lookup half of Stage 4 in docs/DESIGN.md: it
+// lists every capture of a set of sites in one Common Crawl crawl, using the
+// crawl's CDX ("zipnum") index rather than scanning the columnar index.
+//
+// The CDX index is ~300 sorted, gzipped shards plus a small cluster.idx that
+// records the first SURT key and byte range of every block of ~3,000 lines.
+// For each site we binary-search cluster.idx for the blocks covering its SURT
+// range, merge adjacent blocks into a few large Range requests, and keep the
+// lines whose host belongs to one of the sites.
+//
+// Sites are registered domains (example.com: matches example.com and every
+// subdomain) or hosts under a blog platform (someone.blogspot.com).
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/hikeratlas/cc-crawler/internal/ccio"
+)
+
+type block struct {
+	key    string // first SURT key in the block (without timestamp)
+	shard  string
+	offset int64
+	length int64
+}
+
+type cdxRecord struct {
+	URL       string `json:"url"`
+	Mime      string `json:"mime"`
+	MimeDet   string `json:"mime-detected"`
+	Status    string `json:"status"`
+	Digest    string `json:"digest"`
+	Length    string `json:"length"`
+	Offset    string `json:"offset"`
+	Filename  string `json:"filename"`
+	Languages string `json:"languages"`
+	Redirect  string `json:"redirect"`
+}
+
+func main() {
+	crawl := flag.String("crawl", "CC-MAIN-2026-34", "crawl id")
+	sitesPath := flag.String("sites", "", "file of sites, one per line (first tab-separated column; header lines starting with # or 'rank' are skipped)")
+	out := flag.String("out", "out/captures.tsv.gz", "output (gzip TSV)")
+	maxBlocks := flag.Int("max-blocks-per-site", 4, "cap on CDX blocks read per site (~3,000 captures each)")
+	concurrency := flag.Int("concurrency", 4, "parallel range requests")
+	maxRequest := flag.Int64("max-request-bytes", 16<<20, "merge adjacent blocks into requests up to this size")
+	flag.Parse()
+	start := time.Now()
+
+	sites := readSites(*sitesPath)
+	siteSet := map[string]bool{} // SURT host prefix, e.g. "com,example"
+	for _, s := range sites {
+		siteSet[surtHost(s)] = true
+	}
+	log.Printf("%d sites", len(siteSet))
+
+	base := fmt.Sprintf("%s/cc-index/collections/%s/indexes/", ccio.Base, *crawl)
+	blocks := loadClusterIdx(base + "cluster.idx")
+	log.Printf("cluster.idx: %d blocks (%s)", len(blocks), time.Since(start).Round(time.Second))
+
+	// Which blocks does each site need?
+	need := map[int]bool{}
+	capped := 0
+	for host := range siteSet {
+		lo, hi := host+")", host+"-" // ')' < ',' < '-': covers "host)…" and "host,sub)…"
+		i := sort.Search(len(blocks), func(i int) bool { return blocks[i].key > lo }) - 1
+		if i < 0 {
+			i = 0
+		}
+		n := 0
+		for ; i < len(blocks) && blocks[i].key < hi; i++ {
+			if n == *maxBlocks {
+				capped++
+				break
+			}
+			need[i] = true
+			n++
+		}
+	}
+	idx := make([]int, 0, len(need))
+	for i := range need {
+		idx = append(idx, i)
+	}
+	sort.Ints(idx)
+
+	// Merge runs of adjacent blocks in the same shard.
+	type request struct {
+		shard       string
+		off, length int64
+	}
+	var reqs []request
+	var bytesTotal int64
+	for _, i := range idx {
+		b := blocks[i]
+		bytesTotal += b.length
+		if n := len(reqs); n > 0 {
+			last := &reqs[n-1]
+			if last.shard == b.shard && last.off+last.length == b.offset && last.length+b.length <= *maxRequest {
+				last.length += b.length
+				continue
+			}
+		}
+		reqs = append(reqs, request{b.shard, b.offset, b.length})
+	}
+	log.Printf("%d blocks (%.1f MB) in %d requests; %d sites capped at %d blocks",
+		len(idx), float64(bytesTotal)/1e6, len(reqs), capped, *maxBlocks)
+
+	if err := os.MkdirAll(dirOf(*out), 0o755); err != nil {
+		log.Fatal(err)
+	}
+	fo, err := os.Create(*out)
+	must(err)
+	gzw := gzip.NewWriter(fo)
+	w := bufio.NewWriterSize(gzw, 1<<20)
+	fmt.Fprintln(w, "site\tcrawl\ttimestamp\turl\tstatus\tmime\tlanguages\tredirect\twarc_filename\twarc_record_offset\twarc_record_length\tdigest")
+
+	var mu sync.Mutex
+	var kept, seen int64
+	jobs := make(chan request)
+	var wg sync.WaitGroup
+	for k := 0; k < *concurrency; k++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for r := range jobs {
+				data, err := ccio.FetchRange(base+r.shard, r.off, r.length)
+				if err != nil {
+					log.Fatalf("%s@%d: %v", r.shard, r.off, err)
+				}
+				lines := decodeBlocks(data)
+				var buf bytes.Buffer
+				var k2, s2 int64
+				for _, line := range lines {
+					s2++
+					site, rec, ts, ok := parseLine(line, siteSet)
+					if !ok {
+						continue
+					}
+					mime := rec.MimeDet
+					if mime == "" {
+						mime = rec.Mime
+					}
+					fmt.Fprintf(&buf, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", site, *crawl, ts, clean(rec.URL),
+						rec.Status, mime, rec.Languages, clean(rec.Redirect), rec.Filename, rec.Offset, rec.Length, rec.Digest)
+					k2++
+				}
+				mu.Lock()
+				w.Write(buf.Bytes())
+				kept += k2
+				seen += s2
+				mu.Unlock()
+			}
+		}()
+	}
+	for i, r := range reqs {
+		jobs <- r
+		if (i+1)%500 == 0 {
+			log.Printf("%d/%d requests", i+1, len(reqs))
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	must(w.Flush())
+	must(gzw.Close())
+	must(fo.Close())
+	log.Printf("kept %d of %d CDX lines; wrote %s in %s", kept, seen, *out, time.Since(start).Round(time.Second))
+}
+
+func readSites(path string) []string {
+	f, err := os.Open(path)
+	must(err)
+	defer f.Close()
+	var r io.Reader = f
+	if strings.HasSuffix(path, ".gz") {
+		gz, err := gzip.NewReader(f)
+		must(err)
+		r = gz
+	}
+	var sites []string
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "rank\t") || strings.HasPrefix(line, "domain") {
+			continue
+		}
+		col := strings.Split(line, "\t")[0]
+		sites = append(sites, strings.ToLower(col))
+	}
+	must(sc.Err())
+	return sites
+}
+
+// surtHost turns "www.Example.com" into "com,example,www".
+func surtHost(d string) string {
+	p := strings.Split(strings.ToLower(d), ".")
+	for i, j := 0, len(p)-1; i < j; i, j = i+1, j-1 {
+		p[i], p[j] = p[j], p[i]
+	}
+	return strings.Join(p, ",")
+}
+
+// unsurtHost turns "com,example,www" into "www.example.com".
+func unsurtHost(s string) string { return reverseJoin(strings.Split(s, ","), ".") }
+
+func reverseJoin(p []string, sep string) string {
+	for i, j := 0, len(p)-1; i < j; i, j = i+1, j-1 {
+		p[i], p[j] = p[j], p[i]
+	}
+	return strings.Join(p, sep)
+}
+
+func loadClusterIdx(url string) []block {
+	r, err := ccio.Open(url)
+	must(err)
+	defer r.Close()
+	var blocks []block
+	sc := bufio.NewScanner(bufio.NewReaderSize(r, 1<<20))
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		// "<surt> <timestamp>\t<shard>\t<offset>\t<length>\t<seq>"
+		f := strings.Split(sc.Text(), "\t")
+		if len(f) < 4 {
+			continue
+		}
+		key := f[0]
+		if sp := strings.IndexByte(key, ' '); sp >= 0 {
+			key = key[:sp]
+		}
+		off, _ := strconv.ParseInt(f[2], 10, 64)
+		n, _ := strconv.ParseInt(f[3], 10, 64)
+		blocks = append(blocks, block{key, f[1], off, n})
+	}
+	must(sc.Err())
+	return blocks
+}
+
+// decodeBlocks gunzips one or more concatenated gzip members.
+func decodeBlocks(data []byte) [][]byte {
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	must(err)
+	raw, err := io.ReadAll(gz)
+	must(err)
+	return bytes.Split(bytes.TrimRight(raw, "\n"), []byte("\n"))
+}
+
+// parseLine keeps a CDX line if its host is one of the sites or a subdomain
+// of one. Line format: "<surt> <timestamp> <json>".
+func parseLine(line []byte, sites map[string]bool) (string, cdxRecord, string, bool) {
+	var rec cdxRecord
+	sp1 := bytes.IndexByte(line, ' ')
+	if sp1 < 0 {
+		return "", rec, "", false
+	}
+	surt := line[:sp1]
+	paren := bytes.IndexByte(surt, ')')
+	if paren < 0 {
+		return "", rec, "", false
+	}
+	host := string(surt[:paren])
+	if i := strings.IndexByte(host, ':'); i >= 0 { // strip port
+		host = host[:i]
+	}
+	site := ""
+	for h := host; ; {
+		if sites[h] {
+			site = h
+			break
+		}
+		i := strings.LastIndexByte(h, ',')
+		if i < 0 {
+			break
+		}
+		h = h[:i]
+	}
+	if site == "" {
+		return "", rec, "", false
+	}
+	rest := line[sp1+1:]
+	sp2 := bytes.IndexByte(rest, ' ')
+	if sp2 < 0 {
+		return "", rec, "", false
+	}
+	if err := json.Unmarshal(rest[sp2+1:], &rec); err != nil {
+		return "", rec, "", false
+	}
+	return unsurtHost(site), rec, string(rest[:sp2]), true
+}
+
+func clean(s string) string { return strings.NewReplacer("\t", " ", "\n", " ").Replace(s) }
+
+func dirOf(p string) string {
+	if i := strings.LastIndex(p, "/"); i >= 0 {
+		return p[:i]
+	}
+	return "."
+}
+
+func must(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
+}
