@@ -639,6 +639,32 @@ good pages. Going further needs page content.
   smooths out the per-page noise. The output is the final candidate list
   (the filtered candidates of kept sites).
 
+### Site-content run 1 results (2026-11-07)
+
+Report: [`data/reports/stage7_site-content-run-1.md`](../data/reports/stage7_site-content-run-1.md);
+outputs in the `site-content-run-1` release. ~43k pages fetched in 49 min
+(8 Arm jobs).
+
+- **4,403 of 8,933 sites kept → 323,762 candidate URLs** (from 845k).
+- Known blogs: 26 of the 28 sampled are kept. Dropped: andrewskurka.com
+  (its sampled pages were gear giveaways) and outsideonline.com.
+- Negatives still kept are mostly professional hiking content
+  (onlyinyourstate.com, visitutah.com, theoutbound.com, 10adventures.com,
+  travelalberta.com). They should get the professional `site_kind` label
+  rather than be dropped. Expired blogs (nobodyhikesinla.com,
+  hikeitbaby.com) are kept on the strength of their genuine older pages.
+- Precision estimated from the 300 labelled filtered-list pages: pages on
+  kept sites are **64% relevant (95% CI 55–71%; core 48%)**, against 19%
+  on dropped sites. **72% of the good pages are retained.** This is
+  somewhat optimistic, since the page model was partly trained on these
+  labels. A fresh sample from the final list would give an unbiased
+  number.
+- Remaining errors on kept sites: stub and empty pages on otherwise good
+  aggregators (topo place stubs, empty lists, photo albums), other
+  activities (running/biking pages), and some non-US routes. Most are
+  short or low-scoring pages, so a page-level pass (fetch and score every
+  remaining page) is the obvious next filter.
+
 ## Stage 8: Measure recall with WET samples
 
 The graph-based funnel can't see blogs that don't link to our hubs. To measure
@@ -698,7 +724,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 7: Content spot checks | 🟨 site-content pass | 500 labelled pages; URL rules → 39%; page model; per-site content judgement |
+| 7: Content spot checks | ✅ site-content run 1 | 323,762 URLs from 4,403 sites, ~64% precision (est.) |
 | 8: WET recall sample | ⬜ not started | |
 
 ## Open questions
