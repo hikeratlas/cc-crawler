@@ -13,6 +13,10 @@ on:
         description: "page-pass release to take page text from"
         default: "page-pass-run-1"
         required: true
+      page_pass_run_id:
+        description: "Optional: take page text from this page-pass workflow run's artifacts instead of the release"
+        default: ""
+        required: false
       index_url:
         description: "Hiker Atlas autosuggest index"
         default: "https://public.hikeratlas.com/north-america.autosuggest.db"
@@ -32,6 +36,7 @@ on:
 
 permissions:
   contents: write   # read the source release, create the extract-run-<n> release
+  actions: read     # download artifacts from a page-pass run (page_pass_run_id)
 
 jobs:
   plan:
@@ -44,8 +49,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          parts=$(gh release view "${{ inputs.page_pass_release }}" -R "$GITHUB_REPOSITORY" --json assets \
-            -q '[.assets[].name | select(test("^pages-part-[0-9]+\\.jsonl\\.gz$")) | capture("(?<n>[0-9]+)").n | tonumber] | sort')
+          if [ -n "${{ inputs.page_pass_run_id }}" ]; then
+            parts=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.page_pass_run_id }}/artifacts?per_page=100" \
+              -q '[.artifacts[].name | select(test("^page-text-[0-9]+$")) | capture("(?<n>[0-9]+)").n | tonumber] | unique | sort')
+          else
+            parts=$(gh release view "${{ inputs.page_pass_release }}" -R "$GITHUB_REPOSITORY" --json assets \
+              -q '[.assets[].name | select(test("^pages-part-[0-9]+\\.jsonl\\.gz$")) | capture("(?<n>[0-9]+)").n | tonumber] | sort')
+          fi
           echo "partitions: $parts"
           echo "parts=$parts" >> "$GITHUB_OUTPUT"
 
@@ -65,8 +75,13 @@ jobs:
         run: |
           mkdir -p in out
           curl -fsSL --retry 5 -o in/index.db "${{ inputs.index_url }}"
-          gh release download "${{ inputs.page_pass_release }}" --dir in \
-            --pattern "pages-part-${{ matrix.part }}.jsonl.gz" --pattern pages.tsv.gz
+          if [ -n "${{ inputs.page_pass_run_id }}" ]; then
+            gh run download "${{ inputs.page_pass_run_id }}" -R "$GITHUB_REPOSITORY" -n "page-text-${{ matrix.part }}" -D in
+            gh run download "${{ inputs.page_pass_run_id }}" -R "$GITHUB_REPOSITORY" -n page-pass-report -D in
+          else
+            gh release download "${{ inputs.page_pass_release }}" --dir in \
+              --pattern "pages-part-${{ matrix.part }}.jsonl.gz" --pattern pages.tsv.gz
+          fi
       - name: Extract
         run: |
           python3 -I scripts/extract.py --index in/index.db --pages "in/pages-part-${{ matrix.part }}.jsonl.gz" \
@@ -97,7 +112,13 @@ jobs:
           # Site kinds from this batch's page pass plus any combined ones.
           mkdir -p pp prev
           i=0
-          for rel in ${{ inputs.page_pass_release }} $(echo "${{ inputs.combine_page_pass }}" | tr ',' ' '); do
+          if [ -n "${{ inputs.page_pass_run_id }}" ]; then
+            gh run download "${{ inputs.page_pass_run_id }}" -R "$GITHUB_REPOSITORY" -n page-pass-report -D pp/0; i=1
+            srcs=""
+          else
+            srcs="${{ inputs.page_pass_release }}"
+          fi
+          for rel in $srcs $(echo "${{ inputs.combine_page_pass }}" | tr ',' ' '); do
             gh release download "$rel" --pattern sites.tsv.gz --dir "pp/$i"; i=$((i + 1))
           done
           { zcat pp/0/sites.tsv.gz | head -1; for f in pp/*/sites.tsv.gz; do zcat "$f" | tail -n +2; done; } | gzip > pp/sites.tsv.gz
@@ -108,6 +129,13 @@ jobs:
           python3 -I scripts/hikes.py --in 'out/extracted-*.jsonl.gz' 'prev/*/extracted-*.jsonl.gz' \
             --sites pp/sites.tsv.gz --out-dir hikes
           cat report.md hikes/hikes_report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4   # kept even if the release step fails
+        with:
+          name: extract-report
+          path: |
+            report.md
+            hikes/
+          retention-days: 30
       - name: Publish release assets
         if: ${{ inputs.publish }}
         env:
