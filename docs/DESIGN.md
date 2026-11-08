@@ -1333,7 +1333,8 @@ commit whose workflow files differ from the default branch needs the
 run 2 three times and site-urls run 10. Releases are now tagged at the
 default branch head (no `--target`) and the notes record the run's commit.
 Runs dispatched before a workflow change can still fail; their outputs stay
-in the run's artifacts.
+in the run's artifacts, and the `publish-run` workflow (input: the run id)
+creates the release the run should have made from them, under the same tag.
 
 ## GitHub Actions layout (proposed)
 
