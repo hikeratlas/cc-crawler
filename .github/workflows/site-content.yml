@@ -148,7 +148,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="site-content-run-${{ github.run_number }}"
+          # No --target: tagging the run's own commit fails with 403 once main has newer
+          # workflow files (needs the workflows permission). See DESIGN.md.
           gh release create "$tag" --title "Site content (run ${{ github.run_number }})" \
-            --notes "Candidates from ${{ inputs.site_urls_release }} after URL rules; sites judged by ${{ inputs.per_site }} fetched pages each (keep if mean relevance >= ${{ inputs.site_threshold }}). See report.md." \
-            --target "$GITHUB_SHA"
+            --notes "Candidates from ${{ inputs.site_urls_release }} after URL rules; sites judged by ${{ inputs.per_site }} fetched pages each (keep if mean relevance >= ${{ inputs.site_threshold }}). See report.md. Built from commit $GITHUB_SHA."
           gh release upload "$tag" out/report.md out/site_content.tsv.gz out/candidates.tsv.gz

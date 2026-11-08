@@ -145,9 +145,10 @@ jobs:
           RELEASES: ${{ inputs.releases }}
         run: |
           tag="graph-seeds-run-${{ github.run_number }}"
+          # No --target: tagging the run's own commit fails with 403 once main has newer
+          # workflow files (needs the workflows permission). See DESIGN.md.
           gh release create "$tag" --title "Graph seeds (run ${{ github.run_number }}, ${{ inputs.graph }} graph)" \
-            --notes "Hub scores and ranked seeds (${{ inputs.graph }} graph) merged from: $RELEASES. See report.md." \
-            --target "$GITHUB_SHA"
+            --notes "Hub scores and ranked seeds (${{ inputs.graph }} graph) merged from: $RELEASES. See report.md. Built from commit $GITHUB_SHA."
           gh release upload "$tag" out/seeds.tsv.gz out/report.md
           for d in out/*/; do
             r=$(basename "$d")

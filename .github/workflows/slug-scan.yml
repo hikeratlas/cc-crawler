@@ -99,7 +99,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="slug-scan-run-${{ github.run_number }}"
+          # No --target: tagging the run's own commit fails with 403 once main has newer
+          # workflow files (needs the workflows permission). See DESIGN.md.
           gh release create "$tag" --title "Slug scan (run ${{ github.run_number }})" \
-            --notes "Sites whose URLs name real hikes, from the ${{ inputs.crawl }} URL index. slug_sites.tsv.gz is ranked by score; see slug_report.md." \
-            --target "$GITHUB_SHA"
+            --notes "Sites whose URLs name real hikes, from the ${{ inputs.crawl }} URL index. slug_sites.tsv.gz is ranked by score; see slug_report.md. Built from commit $GITHUB_SHA."
           gh release upload "$tag" out/slug_report.md out/slug_sites.tsv.gz

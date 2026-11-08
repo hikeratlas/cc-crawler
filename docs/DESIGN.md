@@ -682,7 +682,8 @@ first seed list, as a second batch:
 - **Page-pass release.** The page pass's publish step got `HTTP 403:
   Resource not accessible by integration` from `POST /releases` three
   times, although its token had `contents: write` and the extract run
-  minutes later published normally. Cause unknown. There is no
+  minutes later published normally. Cause (found later, see Runner budget):
+  `--target "$GITHUB_SHA"` on a commit older than `main`'s workflow files. There is no
   `page-pass-run-2` release; its outputs are the run's artifacts (kept 30
   days). `extract.yml` gained a `page_pass_run_id` input to read them, and
   now always uploads its report and hike tables as an `extract-report`
@@ -1323,6 +1324,16 @@ not take all the slots.
 - Run **one** heavy cc-crawler workflow at a time (page-pass, site-urls,
   site-content, extract, slug-scan, graph-seeds); queue the next only when
   the previous finishes. That keeps the repo at ≤ 6 of the 20 slots.
+
+**Release publishing 403s.** `gh release create --target "$GITHUB_SHA"`
+fails with `HTTP 403: Resource not accessible by integration` whenever
+`main`'s workflow files changed after the run started: creating a tag on a
+commit whose workflow files differ from the default branch needs the
+`workflows` permission, which `GITHUB_TOKEN` can't have. It hit page-pass
+run 2 three times and site-urls run 10. Releases are now tagged at the
+default branch head (no `--target`) and the notes record the run's commit.
+Runs dispatched before a workflow change can still fail; their outputs stay
+in the run's artifacts.
 
 ## GitHub Actions layout (proposed)
 
