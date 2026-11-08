@@ -663,8 +663,8 @@ first seed list, as a second batch:
   new sites found 11 more that aren't hiking: bike and motorcycle route
   apps, snowmobile reports, RC rock crawling, radio tower listings,
   campsite booking, hotels, cabin rentals, a park directory, driving audio
-  tours and a radio station. They are listed in `NOT_HIKING_SITES` in
-  `scripts/hikes.py` (5,950 pages dropped). The slug scan's score can't
+  tours and a radio station. They are listed in `data/excluded_sites.csv`
+  (5,950 pages dropped). The slug scan's score can't
   tell these apart, because their URLs really are trail names.
 - **Combined result** (both batches, after the exclusions):
 
@@ -1152,6 +1152,50 @@ sample of gained hikes were right, about the same as the table overall.
 Most come from small parks and preserves, plus the apostrophe fix
 ("Queens Garden Trail", "Sam's Knob").
 
+### Re-run with the fixes, and authentic sites only (2026-11-08)
+
+Both batches went back through Stages 7–9 with the site-filter and
+extraction fixes above. Batch 1: `site-content-run-3` (5,544 sites,
+478k URLs) and page-pass run 42463103937 (its first attempt lost one of 32
+partitions to a dead runner and published `page-pass-run-3` without it;
+the re-run's complete outputs are the run's artifacts). Batch 2:
+`site-content-run-4` (977 sites, 196k URLs), `page-pass-run-4`,
+`extract-run-8`. Combined: `extract-run-9`.
+
+| | `extract-run-7` | `extract-run-9` | authentic sites only |
+|---|---:|---:|---:|
+| hikes | 68,129 | 92,963 | 46,861 |
+| from personal sites | 10,633 | 20,869 | 20,252 |
+| personal share | 16% | 22% | 43% |
+| hike groups | 22,663 | 30,231 | 16,282 |
+| groups with 10+ sites | — | 770 | 461 |
+
+Personal sites with hikes doubled (780 → 1,607). Most of the other gain
+came from large trail databases the looser site filter now let in:
+hiiker.app (9.8k), trailrunproject.com (7.8k), theoutbound.com (6.8k),
+mtbproject.com (4.8k, often in the wrong state), fatmap.com,
+powderproject.com (skiing).
+
+The hike table is for linking authentic, human-written posts to hikes, so
+**aggregators, trail databases, generated directories, content farms and
+non-hiking sites are excluded** at the hike table. They are listed with a
+reason in `data/excluded_sites.csv` (73 sites, chosen by hand from every
+site with ≥ ~30 hikes); `hikes.py` reads it and reports drops per reason.
+Personal sites, clubs, park agencies, magazines and small guide sites
+written by people (hikespeak.com, climb13ers.com, nynjtc.org) stay. The
+exclusions drop half the hikes but only ~600 from personal sites (all
+onlyinyourstate.com, a listicle site the classifier calls personal).
+`hikes_report.md` now lists the 40 largest organisation sites so new
+aggregators can be spotted and added on each run.
+
+Watch list (sites, authentic only): Panorama Ridge 10 (8 personal), La
+Cloche Silhouette Trail 3, Green Gardens Trail 3, Tonquin Valley 1; "Hike
+#25: The Crack" still ungrouped (title lacks "Trail").
+
+Note: `site_kind` calls several one-person sites "organisation"
+(dwhike.com, hikespeak.com, gjhikes.com), so the personal share is a lower
+bound.
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |
@@ -1195,10 +1239,10 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 6b: Slug scan | 🟨 first batch done | `slug-scan` workflow; 4,303 new sites → 780 after Stages 4–7 → +7,095 hikes, +2,751 groups (`extract-run-6`) |
+| 6b: Slug scan | 🟨 first batch done | `slug-scan` workflow; 4,303 new sites → 977 after Stages 4–7 (`site-content-run-4`) |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
-| 9: Extraction | 🟨 first pass | two batches combined in `extract-run-6`: 68,294 hikes in 22,687 groups; page-type model (76%); `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
+| 9: Extraction | 🟨 first pass | two batches combined in `extract-run-9`; authentic sites only: 46,861 hikes in 16,282 groups (43% personal); page-type model (76%); `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
 
 ## Open questions
 
@@ -1239,3 +1283,4 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Stage 4 reads the CDX (zipnum) index directly for per-site lookups; Parquet is kept for later whole-index scans. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |
 | 2026-11-08 | Slug-scan sites are a second batch through Stages 4–9; batches combine at the hike table. Non-hiking sites the score can't catch are excluded by hand in `hikes.py`. |
+| 2026-11-08 | The hike table keeps **authentic, human-written sites only**: aggregators, trail databases, generated directories and content farms are excluded by hand (`data/excluded_sites.csv`). |
