@@ -609,6 +609,37 @@ requests: ~70 MB and ~40 s per index file, ~21 GB per crawl. The
   existing site-content and page-pass stages filter candidates by their
   content anyway, so this stage only needs a good shortlist.
 
+**Full run (slug-scan-run-1, CC-MAIN-2026-34, 2026-11-08).**
+- **Coverage.** 1.57M sites have at least one URL naming a hike.
+  - 1,737 of our 4,403 page-pass sites show up with ≥ 5 distinct names.
+  - Sites scoring ≥ 5: 83k.
+
+  | score | sites | already known |
+  |---|---:|---:|
+  | ≥ 200 | 904 | 259 |
+  | 100–200 | 1,370 | 272 |
+  | 50–100 | 2,895 | 335 |
+  | 25–50 | 6,973 | 407 |
+  | 10–25 | 28,601 | 458 |
+
+- **Precision.** Eyeballing random new sites by score band:
+  - ≥ 100: roughly 60% hiking or outdoor sites (seniorhikerphotos,
+    hikestgeorge, westkootenayhiking.ca, ozarkhighlandstrail.com).
+  - 50–100: ~35%.
+  - 25–50: ~20%.
+
+  The rest are real estate, running races, golf, travel agents, and
+  galleries that title paintings after places.
+- **Watch list.**
+  - Panorama Ridge: 87 sites (vancouvertrails, northshorehikers.org,
+    rambleon.ca, wanderung.ca, several personal sites).
+  - Tonquin Valley: 16 (some guiding and blog sites, many art galleries).
+  - La Cloche Silhouette: 1 new site (myoverdueadventures.com).
+  - "Green gardens" is too generic a phrase to be useful.
+
+**Next:** feed new sites with score ≥ 50 (~4,300) through Stages 4–7 (URL
+index, site content, page pass) as a second seed list.
+
 ## Stage 7: Content spot checks (cheap, sampled)
 
 Range-fetch a **sample** of candidate URLs (e.g. a few hundred per run) from
@@ -1053,7 +1084,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 6b: Slug scan | 🟨 pilot | `slug-scan` workflow; finds sites by hike names in URLs, including platform blogs |
+| 6b: Slug scan | 🟨 first full run | `slug-scan` workflow; finds sites by hike names in URLs, including platform blogs |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
 | 9: Extraction | 🟨 first pass | page-type model (76%), hike table and hike groups (~20k groups) added; `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
