@@ -81,10 +81,14 @@ jobs:
           path: out/
           merge-multiple: true
       - name: Report
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           ls -la out/
           python3 -I scripts/extract_report.py --in 'out/extracted-*.jsonl.gz' --out report.md
-          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          gh release download "${{ inputs.page_pass_release }}" --pattern sites.tsv.gz --dir pp
+          python3 -I scripts/hikes.py --in 'out/extracted-*.jsonl.gz' --sites pp/sites.tsv.gz --out-dir hikes
+          cat report.md hikes/hikes_report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Publish release assets
         if: ${{ inputs.publish }}
         env:
@@ -92,6 +96,6 @@ jobs:
         run: |
           tag="extract-run-${{ github.run_number }}"
           gh release create "$tag" --title "Extraction (run ${{ github.run_number }})" \
-            --notes "First extraction pass over ${{ inputs.page_pass_release }}: page type, OSM features resolved to one region, distance, gain and date per kept page. extracted-*.jsonl.gz hold one JSON record per page. See report.md." \
+            --notes "First extraction pass over ${{ inputs.page_pass_release }}: page type, OSM features resolved to one region, distance, gain and date per kept page. extracted-*.jsonl.gz hold one JSON record per page; hikes.tsv.gz has one row per trip report or trail guide. See report.md and hikes_report.md." \
             --target "$GITHUB_SHA"
-          gh release upload "$tag" report.md out/*.jsonl.gz
+          gh release upload "$tag" report.md hikes/hikes_report.md hikes/hikes.tsv.gz out/*.jsonl.gz

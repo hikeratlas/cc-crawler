@@ -826,6 +826,46 @@ state. The misses: a Utah singletrack placed in Colorado; an Appalachian
 Trail wish-list post placed in Michigan by "Lake Michigan"; and a
 "Public Land" match on a policy story.
 
+### Page-type model (2026-11-08)
+
+The rule-based types matched hand labels on only 57% of pages. For example,
+43 of 60 rule `list_article` pages were something else, and the rules had
+no type for park and destination guides. 300 pages (at most one per site,
+60 from each rule type) were labelled into five types in
+`data/eval/page_types.tsv`: trip_report 68, trail_guide 64, list_article
+39, area_guide 26, other 103. `scripts/page_type.py` fits a stdlib
+multinomial logistic regression over 23 text features:
+- first-person and "you" rates;
+- narrative past tense and story time words;
+- stat-box labels, directions and numbered items;
+- area-guide, gear, news and skills vocabulary;
+- title and URL patterns;
+- the number of extracted features.
+
+Five-fold cross-validated accuracy is **76%**, against 57% for the rules (L2 = 20).
+Trip reports: ~80% precision and recall. The model's output is
+`page_type`, with `page_type_p`; the old rules are kept as `rule_type`.
+
+### Hikes (Stage 9b, 2026-11-08)
+
+Every trip report and trail guide gets a `hike` record:
+- a name (the title minus the site name);
+- destinations: peaks, lakes, waterfalls named in the title, else the
+  page's most-mentioned one;
+- trails, from the title first, including long trails;
+- park and state;
+- distance, gain, route shape (loop, out-and-back…), difficulty, and a
+  date for trip reports.
+
+`scripts/hikes.py` keeps hikes that have a location and a destination or
+trail. It joins each hike to its site's kind (personal or organisation) and
+writes `hikes.tsv.gz` plus `hikes_report.md`, which lists the most-covered
+destinations and a sample from personal sites.
+
+On partition 5, 8,149 hike pages gave 3,429 hikes. 48% of hike pages were
+dropped for having no location: mostly non-US trails, and one-word peak
+names ("Moosilauke") that matching ignores.
+
 The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with
 `extracted-*.jsonl.gz` and a report.
@@ -875,7 +915,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
-| 9: Extraction | 🟨 first pass | `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
+| 9: Extraction | 🟨 first pass | page-type model (76%) and hike table added; `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
 
 ## Open questions
 

@@ -31,11 +31,19 @@ import glob
 import gzip
 import json
 import math
+import os
 import re
 import sqlite3
 import statistics
 import sys
 from collections import Counter, defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import page_type as type_model  # noqa: E402
+
+TYPE_MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "models", "type_model.json")
+with open(TYPE_MODEL_PATH) as _f:
+    TYPE_MODEL = json.load(_f)
 
 # Names in the index that are mostly ordinary English phrases on a page.
 STOP_NAMES = {"out and back", "runner up", "back to back", "get out", "return policy", "main street",
@@ -370,8 +378,75 @@ def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
         # e.g. a thru-hike post: no local features, but the page names a state
         rec["location"] = {"lat": None, "lon": None, "state": ctx_states.most_common(1)[0][0], "park": None}
     rec["features"] = feats[:25]
-    rec["page_type"] = page_type(title, text, len(feats))
+    # Page type from the trained model (scripts/page_type.py); the old rules
+    # (rule_type) are kept for comparison.
+    ptype, probs = type_model.predict(TYPE_MODEL, type_model.features(title, text, rec["url"], len(feats)))
+    rec["page_type"] = ptype
+    rec["page_type_p"] = round(probs[ptype], 3)
+    rec["rule_type"] = page_type(title, text, len(feats))
+    if ptype in HIKE_TYPES:
+        rec["hike"] = hike(rec, title, text, kept, found, names, long)
     return rec
+
+
+HIKE_TYPES = ("trip_report", "trail_guide")
+DESTINATION_KINDS = ("peak", "lake", "waterfall", "cliff")
+TITLE_SPLIT = re.compile(r"\s+[|•·]\s+|\s+[-–—]\s+(?=[^-–—]*$)")
+DIFFICULTY = re.compile(r"\bdifficulty\s*(?:rating|level)?\s*:?\s*(easy|moderate|strenuous|difficult|hard|"
+                        r"challenging|very difficult|extreme)\b", re.I)
+ROUTE = re.compile(r"\b(loop|out[- ]and[- ]back|point[- ]to[- ]point|lollipop|shuttle|thru[- ]hike)\b", re.I)
+
+
+def hike_name(title, site=""):
+    """The title minus the site's name (\"Bald Mountain | Our Adirondacks\",
+    \"Wikiloc | Confluence Trail Loop\")."""
+    parts = [p.strip() for p in TITLE_SPLIT.split(title or "") if p.strip()]
+    stem = re.sub(r"[^a-z0-9]", "", (site or "").split(".")[0].lower())
+    if stem and len(parts) > 1:
+        parts = [p for p in parts if stem not in re.sub(r"[^a-z0-9]", "", p.lower())] or parts
+    name = parts[0] if parts else (title or "")
+    name = re.sub(r"\bTrail Trail$", "Trail", name)  # Wikiloc appends "Trail" to every title
+    return name.strip()[:150]
+
+
+def hike(rec, title, text, kept, found, names, long):
+    """One hike per trip report or trail guide: its destination, trails and stats.
+
+    Features named in the title come first: \"Celo Knob & Gibbs Mountain via
+    Woody Ridge Trail\" -> destinations Celo Knob, Gibbs Mountain; trail Woody
+    Ridge Trail. Without a title match, the page's most-mentioned peak, lake
+    or waterfall (>= 2 mentions) is the destination.
+    """
+    by_key = dict(kept)
+    in_title = mentions(title or "", names)
+    pick = lambda f: {"name": f["name"], "kind": f["kind"], "osm_id": f["osm_id"]}
+    dests = [pick(by_key[k]) for k in in_title if k in by_key and by_key[k]["kind"] in DESTINATION_KINDS]
+    trails = [pick(by_key[k]) for k in in_title if k in by_key and by_key[k]["kind"] in ("trail", "hike")]
+    trails += [{"name": max(names[k], key=lambda f: f["qrank"])["name"], "kind": "long_trail", "osm_id": None}
+               for k in in_title if k in long]
+    if not dests:
+        cands = sorted(((found[k], f) for k, f in kept if f["kind"] in DESTINATION_KINDS and found[k] >= 2),
+                       key=lambda t: -t[0])
+        dests = [pick(cands[0][1])] if cands else []
+    if not trails:
+        cands = sorted(((found[k], f) for k, f in kept if f["kind"] in ("trail", "hike") and found[k] >= 2),
+                       key=lambda t: -t[0])
+        trails = [pick(cands[0][1])] if cands else []
+    d = DIFFICULTY.search(text)
+    r = ROUTE.search(title + " " + text[:3000])
+    loc = rec["location"] or {}
+    return {
+        "name": hike_name(title, rec.get("site")),
+        "destinations": dests[:4],
+        "trails": trails[:4],
+        "park": loc.get("park"),
+        "state": loc.get("state"),
+        "distance_mi": rec["distance_mi"],
+        "gain_ft": rec["gain_ft"],
+        "route": r.group(1).lower().replace(" ", "-") if r else None,
+        "difficulty": d.group(1).lower() if d else None,
+        "date": rec["date"] if rec["page_type"] == "trip_report" else None,
+    }
 
 
 def boilerplate(founds, min_pages=10, share=0.5):
