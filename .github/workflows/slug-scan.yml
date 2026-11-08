@@ -47,6 +47,7 @@ jobs:
     timeout-minutes: 180
     strategy:
       fail-fast: false
+      max-parallel: 4   # free plan: 20 concurrent jobs shared with other repos (DESIGN.md)
       matrix:
         part: ${{ fromJSON(needs.plan.outputs.parts) }}
     steps:
