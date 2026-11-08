@@ -37,6 +37,11 @@ on:
         description: "site-urls source only: comma-separated verdicts to take from the previous run"
         default: "hiking,mixed,drifted"
         required: true
+      mode:
+        description: "slug: keep pages whose slug names a hike or place, on hiking/mixed sites. posts: keep every blog-post URL, off_topic sites included (platform blogs, whose diary-style URLs rarely name the hike); the content stages decide"
+        type: choice
+        options: [slug, posts]
+        default: slug
       max_blocks:
         description: "Max CDX blocks (~3,000 captures each) per site per crawl"
         default: "1"
@@ -145,7 +150,7 @@ jobs:
       - name: Score sites
         run: |
           seeds=(); [ -f plan/seeds.tsv.gz ] && seeds=(--seeds plan/seeds.tsv.gz)
-          python3 -I scripts/site_report.py score --captures 'cap/captures-*.tsv.gz' "${seeds[@]}" \
+          python3 -I scripts/site_report.py score --mode "${{ inputs.mode }}" --captures 'cap/captures-*.tsv.gz' "${seeds[@]}" \
             --sites-out "out/sites-part-$PART.tsv.gz" --candidates-out "out/candidates-part-$PART.tsv.gz"
       - uses: actions/upload-artifact@v4
         with:
@@ -191,7 +196,7 @@ jobs:
         run: |
           tag="site-urls-run-${{ github.run_number }}"
           gh release create "$tag" --title "Site URLs (run ${{ github.run_number }})" \
-            --notes "Sites from ${{ inputs.site_source }} (top ${{ inputs.top }}), crawls ${{ inputs.crawls }}, max ${{ inputs.max_blocks }} block(s)/site, ${{ inputs.partitions }} partitions. See report.md." \
+            --notes "Sites from ${{ inputs.site_source }} (top ${{ inputs.top }}), crawls ${{ inputs.crawls }}, max ${{ inputs.max_blocks }} block(s)/site, ${{ inputs.partitions }} partitions, ${{ inputs.mode }} mode. See report.md." \
             --target "$GITHUB_SHA"
           files=(out/report.md out/sites.tsv.gz out/candidates-part-*.tsv.gz)
           [ -f plan/seeds.tsv.gz ] && files+=(plan/seeds.tsv.gz)
