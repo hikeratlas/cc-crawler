@@ -956,6 +956,13 @@ about the same hike together:
 On run 4 there are 19,936 groups. 487 groups are covered by ≥ 10 sites
 (16,174 hikes); 12,953 come from a single site.
 
+**Trail-first keys (after run 5).** Pages about a named trail were split
+by whichever lake or peak they mentioned most: Tonquin Valley Trail went
+to Cavell Lake and Chrome Lake, and La Cloche Silhouette Trail was spread
+over 4 groups. Now, when the title names a trail before any destination,
+the trail is the key. This gives 20,974 groups, and Mount Rainier's
+"Skyline Trail" pages now group under the Skyline Trail.
+
 Known gaps:
 - "South Rim" matched the Black Canyon's South Rim in Colorado for
   Grand Canyon pages. It and "North Rim" are now stoplisted.
