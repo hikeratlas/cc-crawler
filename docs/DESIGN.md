@@ -1312,6 +1312,18 @@ site-content runs with threshold 0 so known-good sites aren't re-judged on
 Platform blogs: site-content (`site-content-run-6`, 8 pages per blog, all
 candidates) kept 155 of 1,890 blogs, 71,749 URLs.
 
+## Runner budget
+
+The account is on GitHub's free plan: **20 concurrent jobs, shared with the
+owner's other repositories**. cc-crawler jobs run for hours, so they must
+not take all the slots.
+
+- Matrix caps: page-pass 6, extract 4, slug-scan 4, site-urls 4,
+  site-content 4, graph-seeds 2.
+- Run **one** heavy cc-crawler workflow at a time (page-pass, site-urls,
+  site-content, extract, slug-scan, graph-seeds); queue the next only when
+  the previous finishes. That keeps the repo at ≤ 6 of the 20 slots.
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |
@@ -1400,3 +1412,4 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |
 | 2026-11-08 | Slug-scan sites are a second batch through Stages 4–9; batches combine at the hike table. Non-hiking sites the score can't catch are excluded by hand in `hikes.py`. |
 | 2026-11-08 | The hike table keeps **authentic, human-written sites only**: aggregators, trail databases, generated directories and content farms are excluded by hand (`data/excluded_sites.csv`). |
+| 2026-11-08 | Runner budget: free plan, 20 concurrent jobs shared with other repos. Matrix caps ≤ 6 and one heavy cc-crawler run at a time. |
