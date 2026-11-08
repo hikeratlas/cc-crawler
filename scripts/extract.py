@@ -48,7 +48,7 @@ with open(TYPE_MODEL_PATH) as _f:
 # Names in the index that are mostly ordinary English phrases on a page.
 STOP_NAMES = {"out and back", "runner up", "back to back", "get out", "return policy", "main street",
               "black diamond", "easter egg", "canoe launch", "great wall", "great wall of china",
-              "first aid", "san francisco", "smoky mountain", "smoky mountains", "day hike", "day hikes", "food storage", "bear country", "free shipping"}
+              "first aid", "san francisco", "south rim", "north rim", "smoky mountain", "smoky mountains", "day hike", "day hikes", "food storage", "bear country", "free shipping"}
 SINGLE_KINDS = ("peak", "lake", "waterfall", "cliff")
 SINGLE_OK_BEFORE = {"mount", "mt", "hike", "hiking", "climb", "climbing", "summit", "summiting", "to", "up"}
 SINGLE = defaultdict(list)  # one-word name -> features; filled by load_index
