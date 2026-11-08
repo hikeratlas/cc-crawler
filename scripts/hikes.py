@@ -67,6 +67,7 @@ def group_key(h, by_osm):
     order = (("destination", h["destinations"]), ("trail", h["trails"]))
     if pos(h["trails"]) < pos(h["destinations"]):
         order = order[::-1]
+    order += (("park", h.get("parks") or []),)  # a small park or preserve as the hike
     for kind, items in order:
         for it in items:
             if it.get("osm_id"):
@@ -231,7 +232,7 @@ def main():
                 if not r["location"]:
                     seen["dropped: no location"] += 1
                     continue
-                if not (h["destinations"] or h["trails"]):
+                if not (h["destinations"] or h["trails"] or h.get("parks")):
                     seen["dropped: no destination or trail"] += 1
                     continue
                 L = r["location"]

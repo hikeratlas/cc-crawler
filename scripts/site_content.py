@@ -33,6 +33,9 @@ from page_features import score as page_score  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+MIN_WORDS = 50
+
+
 def files(patterns):
     return sorted({p for pat in patterns for p in glob.glob(pat)})
 
@@ -90,7 +93,10 @@ def score(args):
     rows = []
     for site, pages in per_site.items():
         ok = [p for p in pages if p]
-        probs = [p[0] for p in ok]
+        # Pages under MIN_WORDS (image attachment pages, "One moment, please..."
+        # bot-check interstitials captured by the crawl) say nothing about the
+        # site; leave them out of its mean unless they're all there is.
+        probs = [p[0] for p in ok if (p[1] or 0) >= MIN_WORDS] or [p[0] for p in ok]
         mean_p = statistics.mean(probs) if probs else 0.0
         share = sum(1 for p in probs if p >= 0.5) / len(probs) if probs else 0.0
         keep = len(ok) > 0 and mean_p >= args.site_threshold

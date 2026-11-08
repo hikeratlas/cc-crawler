@@ -24,7 +24,7 @@ HIKE = re.compile(r"\b(hik(?:e|es|ed|ing|ers?)|trail(?:s|head|heads)?|summit(?:s
                   r"round[- ]trip|out[- ]and[- ]back|loop|backpack(?:ing|ers?)?|scrambl\w*|ridge(?:line)?|peaks?|"
                   r"waterfalls?|falls|campsite|wilderness|overlook|viewpoint|trek(?:king)?|snowshoe\w*|thru[- ]hik\w*)\b")
 DIST = re.compile(r"\b\d+(?:\.\d+)?\s*(?:miles?|mi)\b|\b\d[\d,]*\s*(?:feet|ft)\b")
-NONUS = re.compile(r"\b(km|kilomet(?:re|er)s|switzerland|swiss|italy|italian|france|french alps|germany|spain|portugal|"
+NONUS = re.compile(r"\b(switzerland|swiss|italy|italian|france|french alps|germany|spain|portugal|"
                    r"norway|sweden|finland|denmark|scotland|england|wales|ireland|uk|australia|tasmania|new zealand|"
                    r"nepal|himalaya\w*|peru|patagonia|chile|argentina|japan|slovenia|austria|iceland|pakistan|"
                    r"tanzania|kenya|morocco|india|europe|asia|africa|south america)\b")
