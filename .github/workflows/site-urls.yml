@@ -6,7 +6,8 @@
 # A final job merges the per-site rows into a report and publishes a release
 # named site-urls-run-<run number>. All jobs run on Arm runners.
 #
-# Typical use is two passes:
+# Typical use is two passes (the first can also start from a slug-scan-*
+# release: sites found by the hike names in their URLs, Stage 6b):
 #   1. classify: site_source = a graph-seeds-* release, top = 0 (all seeds),
 #      two crawls, max_blocks = 1. Cheap; gives every site a verdict.
 #   2. harvest:  site_source = the site-urls-* release from pass 1, verdicts =
@@ -17,12 +18,16 @@ on:
   workflow_dispatch:
     inputs:
       site_source:
-        description: "Release to take sites from: graph-seeds-* (ranked seeds) or site-urls-* (sites kept by a previous run)"
+        description: "Release to take sites from: graph-seeds-* (ranked seeds), slug-scan-* (sites found by hike names in URLs) or site-urls-* (sites kept by a previous run)"
         default: "graph-seeds-run-2"
         required: true
       top:
         description: "graph-seeds source only: number of top seeds with >= 2 hubs (0 = all)"
         default: "0"
+        required: true
+      min_score:
+        description: "slug-scan source only: minimum score; sites already in the page pass are skipped"
+        default: "50"
         required: true
       crawls:
         description: "Comma-separated crawl ids"
@@ -63,6 +68,7 @@ jobs:
           TOP: ${{ inputs.top }}
           P: ${{ inputs.partitions }}
           VERDICTS: ${{ inputs.verdicts }}
+          MIN_SCORE: ${{ inputs.min_score }}
         run: |
           mkdir -p plan
           case "$SOURCE" in
@@ -70,6 +76,12 @@ jobs:
               gh release download "$SOURCE" --pattern seeds.tsv.gz --dir plan
               zcat plan/seeds.tsv.gz | awk -F'\t' 'NR > 1 && $4 >= 2 { print $2 }' > plan/ranked.txt
               if [ "$TOP" != 0 ]; then head -n "$TOP" plan/ranked.txt > plan/t && mv plan/t plan/ranked.txt; fi
+              ;;
+            slug-scan-*)
+              # New sites (known = False) with score >= MIN_SCORE, best first.
+              gh release download "$SOURCE" --pattern slug_sites.tsv.gz --dir plan
+              zcat plan/slug_sites.tsv.gz | awk -F'\t' -v m="$MIN_SCORE" 'NR == 1 { for (i = 1; i <= NF; i++) c[$i] = i; next }
+                $c["known"] == "False" && $c["score"] + 0 >= m { print $1 }' > plan/ranked.txt
               ;;
             site-urls-*)
               gh release download "$SOURCE" --pattern sites.tsv.gz --dir plan
