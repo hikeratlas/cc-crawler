@@ -36,7 +36,7 @@ import re
 import sqlite3
 import statistics
 import sys
-from collections import Counter, defaultdict
+from collections import ChainMap, Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import page_type as type_model  # noqa: E402
@@ -49,6 +49,9 @@ with open(TYPE_MODEL_PATH) as _f:
 STOP_NAMES = {"out and back", "runner up", "back to back", "get out", "return policy", "main street",
               "black diamond", "easter egg", "canoe launch", "great wall", "great wall of china",
               "first aid", "san francisco", "smoky mountain", "smoky mountains", "day hike", "day hikes", "food storage", "bear country", "free shipping"}
+SINGLE_KINDS = ("peak", "lake", "waterfall", "cliff")
+SINGLE_OK_BEFORE = {"mount", "mt", "hike", "hiking", "climb", "climbing", "summit", "summiting", "to", "up"}
+SINGLE = defaultdict(list)  # one-word name -> features; filled by load_index
 KINDS = ("trail", "hike", "peak", "lake", "waterfall", "cliff", "park")
 GENERIC = set("""
 the a an of and at on to in
@@ -113,17 +116,29 @@ def load_index(path):
             continue
         if not any(len(t) >= 3 and t.isalpha() and t not in GENERIC for t in toks):
             continue  # needs one real distinguishing word: no "1", "Lake 3", "Big A"
-        if len(toks) == 1:
-            continue  # one-word names ("Sawtooth", "Table", "Baldy") collide with ordinary words
         f = {"kind": kind, "name": name, "osm_id": osm_id, "park": park, "state": state,
              "lat": float(lat), "lon": float(lon), "ele_m": ele, "km": km, "qrank": qrank or 0}
+        if len(toks) == 1 or (kind == "peak" and len(toks) == 2 and toks[0] == "mount"):
+            # One-word names ("Sawtooth", "Table", "Baldy") collide with
+            # ordinary words, so they only count from the title, under the
+            # conditions in single_word_names(). "Mount Moosilauke" is also
+            # called "Moosilauke".
+            word = toks[-1]
+            if (kind in SINGLE_KINDS and word.isalpha() and len(word) >= 4 and word not in GENERIC
+                    and word not in STATES and (qrank or 0) >= 1000):
+                SINGLE[word].append(f)  # well-known only: Moosilauke yes, "Mount General" no
+            if len(toks) == 1:
+                continue
         names[key].append(f)
         if kind == "park" and len(toks) >= 2:
             parks[key] = name
     return names, parks, long_trails(names)
 
 
-def long_trails(names, spread_km=300, min_qrank=300):
+LONG_NAME = re.compile(r"\b(trail|way|path|trace|greenway|route|traverse)\b")
+
+
+def long_trails(names, spread_km=300, min_qrank=100):
     """Long-distance trails (Appalachian, Pacific Crest, Colorado Trail...).
 
     The index holds them as many segments spread over states, so any one
@@ -134,6 +149,17 @@ def long_trails(names, spread_km=300, min_qrank=300):
     for key, fs in names.items():
         trails = [f for f in fs if f["kind"] in ("trail", "hike")]
         if len(trails) < 3 or max(f["qrank"] for f in trails) < min_qrank:
+            continue
+        # Common names ("Lost Lake", "Bear Creek") also have many scattered
+        # trails; a long trail is named like one and is mostly trail entries.
+        # ...but a long trail's segments form a chain: nearly every segment
+        # has another one nearby.
+        if not LONG_NAME.search(key):
+            continue
+        pts = [(f["lat"], f["lon"]) for f in trails]
+        linked = sum(1 for i, p in enumerate(pts)
+                     if any(j != i and fast_km(p, q) <= 40 for j, q in enumerate(pts)))
+        if linked < 0.8 * len(pts):
             continue
         a = (trails[0]["lat"], trails[0]["lon"])
         if max(fast_km(a, (f["lat"], f["lon"])) for f in trails) > spread_km:
@@ -219,9 +245,20 @@ def resolve(found, names, ctx_states, ctx_parks, radius_km=100, max_cands=25):
             best, best_score = c, score
     kept = []
     for key, cs in cands.items():
-        near = [(w, -fast_km(best, p), f) for f, w, p in cs if fast_km(best, p) <= radius_km]
+        # Same weight: prefer the peak/lake/waterfall over a route of the same
+        # name ("Mount Mitchell" the peak, not the hike), then the nearest.
+        near = [(w, f["kind"] in ("peak", "lake", "waterfall", "cliff"), -fast_km(best, p), f)
+                for f, w, p in cs if fast_km(best, p) <= radius_km]
         if near:
-            kept.append((key, max(near, key=lambda t: (t[0], t[1]))[2]))
+            f = max(near, key=lambda t: t[:3])[3]
+            if f["kind"] not in ("peak", "lake", "waterfall", "cliff"):
+                # The index's route "Catoctin Mountain" (a hike, tagged with
+                # the park) beats the peak on weight; use the peak if it's close.
+                same = [g for g, _, p in cs if g["kind"] in ("peak", "lake", "waterfall", "cliff")
+                        and fast_km((f["lat"], f["lon"]), p) <= 10]
+                if same:
+                    f = min(same, key=lambda g: fast_km((f["lat"], f["lon"]), (g["lat"], g["lon"])))
+            kept.append((key, f))
     if not kept:
         return [], None
     # Confidence gate: a weak match ("Great Wall", "Lynn Hill") must not place
@@ -336,13 +373,47 @@ def analyse(page, names, parks):
         for m in STATE_RE.finditer(key):
             ctx_states[STATES[m.group(1).lower()]] -= c
     ctx_states = Counter({k: v for k, v in ctx_states.items() if v > 0})
+    local = single_word_names(title, text, found, ctx_states)
+    for k in local:
+        found[k] = max(1, len(re.findall(r"\b" + re.escape(k.capitalize()) + r"\b", full)))
     rec = {
         "url": page["url"], "site": page.get("row", {}).get("site"), "title": title,
         "page_type": None, "location": None, "features": [],
         "distance_mi": distance_mi(text, title), "gain_ft": gain_ft(text), "date": page_date(page["url"], text),
         "words": page.get("words"),
+        "_local_names": local,
+        "_title_keys": set(mentions(title, ChainMap(local, names))),
     }
     return rec, found, ctx_states, (title, text)
+
+
+def single_word_names(title, text, found, ctx_states):
+    """One-word peaks, lakes and falls named in the title (\"Hiking Moosilauke\").
+
+    Accepted only when the word is capitalised in the title, never appears
+    in lower case in the text (so it reads as a proper noun, not \"table\" or
+    \"sawtooth\"), is not part of a longer name already matched, and has a
+    candidate in a state the page names. Returns {word: candidates}.
+    """
+    out = {}
+    if not ctx_states:
+        return out
+    covered = {t for k in found for t in k.split()}
+    for m in re.finditer(r"\b[A-Z][a-z]{3,}\b", title or ""):
+        w = m.group(0)
+        k = w.lower()
+        before = re.findall(r"[\w.']+", title[:m.start()])
+        after = title[m.end():].lstrip()
+        if before and before[-1][0].isupper() and before[-1].rstrip(".").lower() not in SINGLE_OK_BEFORE:
+            continue  # "Chris Townsend"
+        if re.match(r"(,|[A-Z]{2}\b|[A-Z][a-z])", after):
+            continue  # "Ogden, Utah", "Morrison CO", "Taylor Swift"
+        if k not in SINGLE or k in covered or re.search(r"\b" + k + r"\b", text):
+            continue
+        cands = [f for f in SINGLE[k] if f["state"] in ctx_states]
+        if cands:
+            out[k] = cands
+    return out
 
 
 def feature(f, mentions_n, located=True):
@@ -359,9 +430,13 @@ def feature(f, mentions_n, located=True):
 
 def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
     """Second pass: drop site boilerplate, resolve the region, type the page."""
+    names = ChainMap(rec.pop("_local_names"), names)
+    title_keys = rec.pop("_title_keys")
     found = Counter({k: v for k, v in found.items() if k not in boiler})
     ctx_parks = {k for k in found if k in parks}
-    local = Counter({k: v for k, v in found.items() if k not in long})
+    # Votes for the region: mentions, plus 3 for a name in the title, so
+    # the title's own lake beats a lake mentioned in passing.
+    local = Counter({k: v + (3 if k in title_keys else 0) for k, v in found.items() if k not in long})
     kept, centre = resolve(local, names, ctx_states, ctx_parks)
     feats = [feature(f, found[k]) for k, f in kept]
     if kept or ctx_states:
