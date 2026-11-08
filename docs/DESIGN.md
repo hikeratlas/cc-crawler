@@ -815,6 +815,17 @@ On two partitions the fixes changed the state of 4,200 of 39,600 pages,
 mostly by un-locating photo, attachment and announcement pages that had only
 inherited a site's menu.
 
+### Full run 2 (extract-run-2, 2026-11-08)
+
+With the fixes: 64% of pages located (167,177), 34% with ≥ 3 features,
+distance 38%, gain 15%, date 37%. Another 6,139 pages have only a state, from
+a long trail plus a named state. The top parks are now the expected ones
+(Rocky Mountain, Great Smoky Mountains, Yosemite, Glacier, Grand Canyon,
+Yellowstone). In a random sample of 40 located pages, ~37 had the right
+state. The misses: a Utah singletrack placed in Colorado; an Appalachian
+Trail wish-list post placed in Michigan by "Lake Michigan"; and a
+"Public Land" match on a policy story.
+
 The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with
 `extracted-*.jsonl.gz` and a report.
@@ -864,7 +875,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
-| 9: Extraction | 🟨 first pass | `scripts/extract.py` + `extract` workflow: page type, OSM features and region, distance, gain, date; 48% of pages located |
+| 9: Extraction | 🟨 first pass | `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
 
 ## Open questions
 
