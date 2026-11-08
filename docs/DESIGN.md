@@ -1257,6 +1257,46 @@ destinations, trails and parks it names (`primary = 0`). URL variants
 (http/https, `www.`, `/index.php/`, trailing slash) count once per feature.
 On `extract-run-10`'s pages: 64k links across 20k features.
 
+### Sanity check: two hand-built enthusiast sites (2026-11-08)
+
+bobspirko.ca (hand-built HTML scramble reports) and benmassey.ca
+(WordPress) are known blogs. Both pass the seeds (ranks 679 and 823) and
+reach the hike table, but the pipeline saw a fraction of them. Looked up in
+all 126 crawls with a CDX index (2013–2026):
+
+| | bobspirko.ca | benmassey.ca |
+|---|---:|---:|
+| unique pages in Common Crawl, 2013–2026 | 1,129 | 92 |
+| seen in the 5 crawls harvested (2022–2026) | 358 | 44 |
+| slug-matching candidates | 118 | 15 |
+| kept by the page pass | 116 | 15 |
+| hikes in `extract-run-11` | 93 | 10 |
+
+Two losses, both before the content stages (which kept 98%):
+
+1. **Only recent crawls are harvested.** Bob Spirko's site was crawled
+   most in 2014–2021.
+2. **The slug filter misses CamelCase paths**
+   (`/OtherScrambles/BC/EmeraldPeak/EmeraldPeak.html`): 421 of 1,129 pages
+   matched, even across all crawls.
+
+Fixes in `site_report.py`: slug matching splits CamelCase
+(`emerald-peak`); pages with no language tag (crawls before 2018-39) count
+as English when the site's tagged pages are; and `mode = all` keeps every
+English page. `filter_candidates.py --all` (site-content
+`all_candidates`) stops site-content dropping pages whose slug doesn't
+match; without it, posts-mode candidates were silently reduced to slug
+matches. On the two sites' full archive: 444 candidates (old code) → 850
+(CamelCase) → 1,209 (all mode).
+
+**Deep re-harvest** of every site with hikes in `extract-run-11`, over 14
+crawls (the latest of each year 2014–2021, plus 2022-27, 2023-40, 2024-26,
+2025-26, 2026-34 and 2026-43): the 1,603 personal sites
+(`data/deep/personal_sites.txt`) in `all` mode, and the other 2,469
+(`data/deep/other_sites.txt`) in `slug` mode, so large tourism and
+government sites don't swamp the page pass. `site-urls` takes them with
+`site_source = file:<path>`.
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |

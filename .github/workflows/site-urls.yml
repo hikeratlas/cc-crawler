@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       site_source:
-        description: "Release to take sites from: graph-seeds-* (ranked seeds), slug-scan-* (sites found by hike names in URLs) or site-urls-* (sites kept by a previous run)"
+        description: "Release to take sites from: graph-seeds-* (ranked seeds), slug-scan-* (sites found by hike names in URLs), site-urls-* (sites kept by a previous run), or file:<repo path> (one site per line)"
         default: "graph-seeds-run-2"
         required: true
       top:
@@ -38,9 +38,9 @@ on:
         default: "hiking,mixed,drifted"
         required: true
       mode:
-        description: "slug: keep pages whose slug names a hike or place, on hiking/mixed sites. posts: keep every blog-post URL, off_topic sites included (platform blogs, whose diary-style URLs rarely name the hike); the content stages decide"
+        description: "slug: keep pages whose slug names a hike or place, on hiking/mixed sites. posts: keep every blog-post URL, off_topic sites included (platform blogs, whose diary-style URLs rarely name the hike). all: keep every English page (deep harvest of known-good sites). The content stages decide"
         type: choice
-        options: [slug, posts]
+        options: [slug, posts, all]
         default: slug
       max_blocks:
         description: "Max CDX blocks (~3,000 captures each) per site per crawl"
@@ -93,6 +93,9 @@ jobs:
               gh release download "$SOURCE" --pattern seeds.tsv.gz --dir plan || true
               zcat plan/sites.tsv.gz | awk -F'\t' -v v="$VERDICTS" 'BEGIN { n = split(v, a, ","); for (i = 1; i <= n; i++) keep[a[i]] = 1 }
                 NR > 1 && ($2 in keep) { print $1 }' > plan/ranked.txt
+              ;;
+            file:*)
+              grep -v '^#' "${SOURCE#file:}" | cut -f1 | sed '/^$/d' > plan/ranked.txt
               ;;
             *) echo "::error::unknown site_source $SOURCE"; exit 1 ;;
           esac

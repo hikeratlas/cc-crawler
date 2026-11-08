@@ -95,6 +95,17 @@ def read_csv(path):
         return list(csv.DictReader(f))
 
 
+CAMEL = re.compile(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
+
+
+def slug_text(url):
+    """Lower-cased path + query with CamelCase split into words, so hand-built
+    sites' paths read like slugs: /Banff/MtIshbel/EmeraldPeak.html ->
+    /banff/mt-ishbel/emerald-peak.html."""
+    p = urlsplit(url)
+    return CAMEL.sub("-", (p.path or "/") + ("?" + p.query if p.query else "")).lower()
+
+
 def page_key(url):
     p = urlsplit(url)
     host = (p.hostname or "").lower()
@@ -162,17 +173,22 @@ def score(args):
     n_sites = n_cand = 0
     for site in sorted(pages):
         allp = list(pages[site].values())
+        # Crawls before CC-MAIN-2018-39 record no language. Treat an untagged
+        # page as English when the site's tagged pages are (or none are tagged).
+        tagged = [p[3] for p in allp if p[3]]
+        untagged_eng = not tagged or sum(1 for lg in tagged if lg == "eng") / len(tagged) >= 0.8
         feats = []
         for p in allp:
             path = p[0]
-            eng = p[3] == "eng" and not LOCALE.search(path)
+            eng = (p[3] == "eng" or (not p[3] and untagged_eng)) and not LOCALE.search(path)
             if not eng:
                 continue
-            h, st, pl = bool(HIKE.search(path)), bool(STRICT.search(path)), bool(PLACE.search(path))
-            g = bool(geo_r.search(path) or geo_p.search(path))
-            o = bool(OTHER.search(path))
+            slug = slug_text(p[4])
+            h, st, pl = bool(HIKE.search(slug)), bool(STRICT.search(slug)), bool(PLACE.search(slug))
+            g = bool(geo_r.search(slug) or geo_p.search(slug))
+            o = bool(OTHER.search(slug))
             f = {"hike": h, "strict": st, "place": pl, "geo": g, "other": o,
-                 "blog": bool(BLOG.search(path)), "shop": bool(SHOP.search(path)), "gear": bool(GEAR.search(path)),
+                 "blog": bool(BLOG.search(path)), "shop": bool(SHOP.search(path)), "gear": bool(GEAR.search(slug)),
                  "match": (h or (pl and g)) and not o}
             feats.append((p, f))
         n, n_eng = len(allp), len(feats)
@@ -230,7 +246,10 @@ def score(args):
         site_out.write("\t".join(fmt(row[k]) for k in scols) + "\n")
         n_sites += 1
 
-        if verdict not in KEEP and not (args.mode == "posts" and verdict == "off_topic"):
+        if args.mode == "all":
+            if verdict == "non_english":
+                continue
+        elif verdict not in KEEP and not (args.mode == "posts" and verdict == "off_topic"):
             continue
         for p, f in feats:
             # Only pages whose slug matches: on `hiking` sites, the other pages
@@ -238,7 +257,9 @@ def score(args):
             # mode (platform blogs from the host graph, whose diary-style URLs
             # rarely name the hike) every blog-post URL is kept and the content
             # stages decide.
-            if not (f["match"] or (args.mode == "posts" and f["blog"])):
+            # In all mode (a deep harvest of sites already known to be good) every
+            # English page is kept.
+            if not (f["match"] or args.mode == "all" or (args.mode == "posts" and f["blog"])):
                 continue
             if urlrules.drop_reason(p[4], site):
                 continue
@@ -367,9 +388,10 @@ def main():
     s.add_argument("--seeds", help="seeds.tsv.gz from seed_report.py (for seed rank / hubs columns)")
     s.add_argument("--regions", default="data/gazetteer/regions.txt")
     s.add_argument("--parks", default="data/gazetteer/national_parks.txt")
-    s.add_argument("--mode", choices=("slug", "posts"), default="slug",
+    s.add_argument("--mode", choices=("slug", "posts", "all"), default="slug",
                    help="slug: keep pages whose slug names a hike or place on hiking/mixed sites; posts: also keep "
-                        "every blog-post URL, on off_topic sites too (for platform blogs)")
+                        "every blog-post URL, on off_topic sites too (for platform blogs); all: keep every English "
+                        "page of every site (deep harvest of sites already known to be good)")
     s.add_argument("--sites-out", required=True)
     s.add_argument("--candidates-out", required=True)
     r = sub.add_parser("report", help="merge partitions' site rows into a report")

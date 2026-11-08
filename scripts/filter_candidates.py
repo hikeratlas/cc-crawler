@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Re-filter an existing candidate list with the current URL rules.
 
-Keeps only pages whose slug matches (slug_match = 1) and that no rule in
+Keeps only pages whose slug matches (slug_match = 1; with --all, any page) and that no rule in
 scripts/urlrules.py drops, and reports what was removed and why. Use it to
 apply rule changes to a published candidate list without re-running the
 harvest.
@@ -24,6 +24,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--candidates", nargs="+", required=True)
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--all", action="store_true",
+                    help="keep pages whose slug doesn't match too (candidates from site-urls posts/all mode)")
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
     why = Counter()
@@ -38,7 +40,7 @@ def main():
             for line in f:
                 total += 1
                 row = line.rstrip("\n").split("\t")
-                if row[col["slug_match"]] != "1":
+                if row[col["slug_match"]] != "1" and not args.all:
                     why["no_slug_match"] += 1
                     continue
                 r = urlrules.drop_reason(row[col["url"]], row[col["site"]])

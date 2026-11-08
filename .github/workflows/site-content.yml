@@ -27,6 +27,10 @@ on:
         description: "Keep a site when its pages' mean relevance is at least this"
         default: "0.35"
         required: true
+      all_candidates:
+        description: "Keep candidates whose slug doesn't name a hike (site-urls posts/all mode); the content scores decide"
+        type: boolean
+        default: false
       publish:
         description: "Attach outputs to a GitHub release"
         type: boolean
@@ -48,7 +52,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "${{ inputs.site_urls_release }}" --pattern 'candidates-part-*.tsv.gz' --dir cand
-          python3 -I scripts/filter_candidates.py --candidates 'cand/*.tsv.gz' --out-dir filtered
+          python3 -I scripts/filter_candidates.py --candidates 'cand/*.tsv.gz' --out-dir filtered ${{ inputs.all_candidates && '--all' || '' }}
           python3 -I scripts/site_content.py sample --candidates 'filtered/*.tsv.gz' \
             --per-site "${{ inputs.per_site }}" --partitions "${{ inputs.partitions }}" --out-dir plan
           echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.partitions }}))))")" >> "$GITHUB_OUTPUT"
@@ -107,7 +111,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "${{ inputs.site_urls_release }}" --pattern 'candidates-part-*.tsv.gz' --dir cand
-          python3 -I scripts/filter_candidates.py --candidates 'cand/*.tsv.gz' --out-dir filtered
+          python3 -I scripts/filter_candidates.py --candidates 'cand/*.tsv.gz' --out-dir filtered ${{ inputs.all_candidates && '--all' || '' }}
           python3 -I scripts/site_content.py score --pages 'pages/*.jsonl' --candidates 'filtered/*.tsv.gz' \
             --site-threshold "${{ inputs.site_threshold }}" --out-dir out
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
