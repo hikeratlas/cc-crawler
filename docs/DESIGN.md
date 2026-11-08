@@ -637,8 +637,52 @@ requests: ~70 MB and ~40 s per index file, ~21 GB per crawl. The
   - La Cloche Silhouette: 1 new site (myoverdueadventures.com).
   - "Green gardens" is too generic a phrase to be useful.
 
-**Next:** feed new sites with score ≥ 50 (~4,300) through Stages 4–7 (URL
-index, site content, page pass) as a second seed list.
+### Second batch through Stages 4–9 (2026-11-08)
+
+The 4,303 new sites scoring ≥ 50 went through the same stages as the
+first seed list, as a second batch:
+
+| stage | run | sites | pages / URLs |
+|---|---|---:|---:|
+| URL index classify | `site-urls-run-5` | 2,206 kept | |
+| harvest | `site-urls-run-6` | 2,064 | 496,759 URLs |
+| site content | `site-content-run-2` | 780 kept | 156,907 URLs |
+| page pass | workflow run 42445288065 | 780 (164 personal) | 107,854 pages kept |
+| extraction, combined with batch 1 | `extract-run-6` | | |
+
+- **Page-pass release.** The page pass's publish step got `HTTP 403:
+  Resource not accessible by integration` from `POST /releases` three
+  times, although its token had `contents: write` and the extract run
+  minutes later published normally. Cause unknown. There is no
+  `page-pass-run-2` release; its outputs are the run's artifacts (kept 30
+  days). `extract.yml` gained a `page_pass_run_id` input to read them, and
+  now always uploads its report and hike tables as an `extract-report`
+  artifact.
+- **Junk sites.** The biggest new contributor was ridepal.app (2,437
+  "hikes"), a mountain-bike trail map database. A hand check of the top
+  new sites found 11 more that aren't hiking: bike and motorcycle route
+  apps, snowmobile reports, RC rock crawling, radio tower listings,
+  campsite booking, hotels, cabin rentals, a park directory, driving audio
+  tours and a radio station. They are listed in `NOT_HIKING_SITES` in
+  `scripts/hikes.py` (5,950 pages dropped). The slug scan's score can't
+  tell these apart, because their URLs really are trail names.
+- **Combined result** (both batches, after the exclusions):
+
+  | | batch 1 | combined |
+  |---|---:|---:|
+  | sites with hikes | 3,024 | 3,529 |
+  | hikes | 61,199 | 68,294 |
+  | hike groups | 19,936 | 22,687 |
+  | groups covered by ≥ 5 sites | 1,581 | 1,924 |
+  | groups covered by ≥ 10 sites | 487 | 583 |
+
+  Good new personal sources: stavislost.com (949 hikes), harrimanhiker.com,
+  runbikehike.us, robshikingdiary.com, yetihikes.net.
+- **Watch list.** Panorama Ridge 10 → 12 sites (5 → 7 personal); La
+  Cloche Silhouette Trail 2 → 4; Green Gardens Trail 2 → 4; Tonquin Valley
+  Trail now has a group of its own (1 site). "Hike #25: The Crack" stays
+  ungrouped: the index names the trail `The "Crack" Trail` and the title
+  omits "Trail".
 
 ## Stage 7: Content spot checks (cheap, sampled)
 
@@ -1084,10 +1128,10 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
-| 6b: Slug scan | 🟨 first full run | `slug-scan` workflow; finds sites by hike names in URLs, including platform blogs |
+| 6b: Slug scan | 🟨 first batch done | `slug-scan` workflow; 4,303 new sites → 780 after Stages 4–7 → +7,095 hikes, +2,751 groups (`extract-run-6`) |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
-| 9: Extraction | 🟨 first pass | page-type model (76%), hike table and hike groups (~20k groups) added; `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
+| 9: Extraction | 🟨 first pass | two batches combined in `extract-run-6`: 68,294 hikes in 22,687 groups; page-type model (76%); `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
 
 ## Open questions
 
@@ -1127,3 +1171,4 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-07 | Seeds come from the union of one graph release per year (2022–2026): recall 52% → 88%. |
 | 2026-11-07 | Stage 4 reads the CDX (zipnum) index directly for per-site lookups; Parquet is kept for later whole-index scans. |
 | 2026-11-07 | Seed discovery starts from the **domain-level web graph** using hand-curated hiking hubs. |
+| 2026-11-08 | Slug-scan sites are a second batch through Stages 4–9; batches combine at the hike table. Non-hiking sites the score can't catch are excluded by hand in `hikes.py`. |
