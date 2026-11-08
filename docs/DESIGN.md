@@ -307,6 +307,20 @@ files totalling ~10.9 GiB).
 Cost is roughly 1.5× the domain pass, spread across a matrix. Doing it later is
 cheap provided the site abstraction above is in place from the start.
 
+**Implementation (2026-11-08):** `hubscore -graph host` (`cmd/hubscore/host.go`),
+run with the `graph-seeds` workflow's `graph = host` input. It reads the
+vertex and edge parts listed in `<release>-host-{vertices,edges}.paths.gz`,
+one job per release (no matrix: edges are filtered to platform sources with
+a bitset, so the pass is bound by download). Platforms come from
+`data/platforms.csv`. Output has the domain-mode columns (`domain` = host,
+`n_hosts` = 1), so `seed_report.py` ranks it unchanged, and `site-urls`
+takes the resulting `graph-seeds-run-<n>` release as before: `sitecdx`
+matches sites by SURT host prefix, so `foo.blogspot.com` is looked up as its
+own site. Hub in-degrees count linking platform hosts only.
+
+Baseline before this pass: the hike table had 20 blogspot sites (454 hikes),
+one wixsite and **no** wordpress.com blogs, all found by the slug scan.
+
 ## Stage 3: Turn hub scores into seed domains
 
 Start with a simple, explainable score and refine it against the eval set:
@@ -1197,6 +1211,37 @@ Note: `site_kind` calls several one-person sites "organisation"
 (dwhike.com, hikespeak.com, gjhikes.com), so the personal share is a lower
 bound.
 
+### Precision of the hike table (`extract-run-10`, 2026-11-08)
+
+150 random hikes checked by hand from title, URL and the linked features:
+
+| verdict | hikes | share |
+|---|---:|---:|
+| right post, right feature | 108 | 72% |
+| right area, secondary feature ("Lake Ramona via Lake Poway" → Lake Poway) | 13 | 9% |
+| wrong feature | 11 | 7% |
+| not one hike (road trips, news, an elopement, a lodge page, gravel rides, a "year of hiking" recap) | 18 | 12% |
+
+Of the pages that are one hike, 92% link to the right feature or a nearby
+one. Most wrong links are a **common name resolved in the wrong state**
+when the page's real place isn't confidently found: Ozette's Sand Point →
+Oregon, Ausable Chasm's Elephant Rock → Yosemite, DuPont's Triple Falls →
+Arkansas, Kaena Point's "Coastal Trail" → Pennsylvania, Torrey Pines'
+Yucca Point → Kings Canyon. Non-hike pages are the larger problem; a few
+whole sites (gravel-bike routes, an elopement photographer, a radio
+station) were added to `data/excluded_sites.csv`.
+
+### Link file
+
+`hikes.py` writes `links.tsv.gz` for showing posts on a feature's page:
+one row per (OSM feature, post) with `osm_id, primary, role, feature,
+feature_kind, state, group_id, url, title, site, site_kind, page_type, date,
+distance_mi, gain_ft`. A post links to the feature its group is about
+(`primary = 1`, including features merged into that group) and to the other
+destinations, trails and parks it names (`primary = 0`). URL variants
+(http/https, `www.`, `/index.php/`, trailing slash) count once per feature.
+On `extract-run-10`'s pages: 64k links across 20k features.
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |
@@ -1235,7 +1280,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 0: Reference data and eval set | 🟨 drafted, in review | `hubs.csv`, `known_blogs.csv`, `negatives.csv` drafted; graph presence checked against `cc-main-2026-jul-aug-sep` |
 | 1: Graph release and hub IDs | ✅ done | `cmd/hubscore` pass 1; latest release still missing its vertices file, so default is `cc-main-2026-jul-aug-sep` |
 | 2: Edge stream and hub scoring | ✅ done | `cmd/hubscore` + `graph-seeds` workflow; first results above |
-| 2b: Host-graph pass for platform blogs | ⬜ not started | Planned for v1, right after Stage 2 |
+| 2b: Host-graph pass for platform blogs | 🟨 implemented | `hubscore -graph host`; first run pending |
 | 3: Seed domains | 🟨 first cut | `scripts/seed_report.py`: union of 5 releases, 88.8k domains ≥ 2 hubs, 88% recall; needs gear/commerce and expired-domain filters (Stage 4 signals) |
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
