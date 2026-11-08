@@ -928,6 +928,40 @@ eyeballing showed mostly fixes: Convict Lake, Lake Isabelle, Union Falls,
 Catoctin Mountain, the Grand Canyon in Arizona. 360 index and list pages
 were dropped.
 
+### Full run 4 and hike groups (extract-run-4, 2026-11-08)
+
+Run 4: 61,199 hikes. 63% have a destination and 67% a trail. About 25 of
+30 random rows were usable, against ~24 in run 3.
+
+**Hike groups** (`hike_groups.tsv.gz`, from `scripts/hikes.py`) put pages
+about the same hike together:
+- **The key** is the hike's main destination OSM ID, else its main trail.
+  A long trail alone groups by long trail and state ("Appalachian Trail
+  (Maine)").
+- **Routes:** different routes to one summit share a group, and their
+  trails are listed as variants with counts. Mount Rainier: Skyline Trail
+  56, Wonderland Trail 42. Half Dome: Glacier Point, Mist Trail.
+- **Merging:** groups whose names match (ignoring trail/loop/hike) are
+  merged when within 15 km, chaining. This joins a trail's separate OSM
+  ways and the index's "Bright Angel" route with "Bright Angel Trail"
+  (140 sites).
+- **Each group row** has:
+  - site, personal-site and page counts;
+  - median distance and gain;
+  - the top trails;
+  - up to 5 example URLs, one per site, personal sites and trip reports
+    first.
+- **`hikes.tsv.gz`** gains a `group_id` column.
+
+On run 4 there are 19,936 groups. 487 groups are covered by ≥ 10 sites
+(16,174 hikes); 12,953 come from a single site.
+
+Known gaps:
+- "South Rim" matched the Black Canyon's South Rim in Colorado for
+  Grand Canyon pages. It and "North Rim" are now stoplisted.
+- Very long trails that fail the chain test (the Bruce Trail) stay split
+  into several groups.
+
 The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with
 `extracted-*.jsonl.gz` and a report.
@@ -977,7 +1011,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 6: Snowball | ⬜ not started | |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
-| 9: Extraction | 🟨 first pass | page-type model (76%) and hike table added; `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
+| 9: Extraction | 🟨 first pass | page-type model (76%), hike table and hike groups (~20k groups) added; `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
 
 ## Open questions
 

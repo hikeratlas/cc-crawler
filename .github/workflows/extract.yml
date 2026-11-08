@@ -96,6 +96,6 @@ jobs:
         run: |
           tag="extract-run-${{ github.run_number }}"
           gh release create "$tag" --title "Extraction (run ${{ github.run_number }})" \
-            --notes "First extraction pass over ${{ inputs.page_pass_release }}: page type, OSM features resolved to one region, distance, gain and date per kept page. extracted-*.jsonl.gz hold one JSON record per page; hikes.tsv.gz has one row per trip report or trail guide. See report.md and hikes_report.md." \
+            --notes "First extraction pass over ${{ inputs.page_pass_release }}: page type, OSM features resolved to one region, distance, gain and date per kept page. extracted-*.jsonl.gz hold one JSON record per page; hikes.tsv.gz has one row per trip report or trail guide; hike_groups.tsv.gz groups them by destination or trail. See report.md and hikes_report.md." \
             --target "$GITHUB_SHA"
-          gh release upload "$tag" report.md hikes/hikes_report.md hikes/hikes.tsv.gz out/*.jsonl.gz
+          gh release upload "$tag" report.md hikes/hikes_report.md hikes/hikes.tsv.gz hikes/hike_groups.tsv.gz out/*.jsonl.gz

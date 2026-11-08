@@ -14,6 +14,7 @@ import csv
 import glob
 import gzip
 import json
+import math
 import os
 import random
 import re
@@ -28,9 +29,142 @@ LIST_TITLE = re.compile(r"(?:^\s*|\b(?:top|best)\s+)\d{1,3}\s+(?:[\w'’-]+\s+){
                         r"\bbest\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|\b" + PLURAL + r"\s+(?:in|near|around)\b",
                         re.I)
 
-COLS = ["name", "page_type", "page_type_p", "destinations", "destination_osm_ids", "trails", "trail_osm_ids",
+COLS = ["group_id", "name", "page_type", "page_type_p", "destinations", "destination_osm_ids", "trails", "trail_osm_ids",
         "park", "state", "lat", "lon", "distance_mi", "gain_ft", "route", "difficulty", "date",
         "site", "site_kind", "url"]
+
+
+def group_key(h, by_osm):
+    """The hike's group: its main destination, else its main trail.
+
+    Different routes to one summit share a group (the trails are listed as
+    variants). A long trail alone groups by trail and state: thru-hike
+    posts about the Appalachian Trail in Maine. Returns (id, info) where
+    info describes the group's feature.
+    """
+    for kind, items in (("destination", h["destinations"]), ("trail", h["trails"])):
+        for it in items:
+            if it.get("osm_id"):
+                f = by_osm.get(it["osm_id"], {})
+                return (f"osm:{it['osm_id']}",
+                        {"group_kind": kind, "name": it["name"], "feature_kind": it["kind"], "osm_id": it["osm_id"],
+                         "lat": f.get("lat", ""), "lon": f.get("lon", ""), "ele_m": f.get("ele_m", ""),
+                         "state": f.get("state") or h["state"] or "", "park": f.get("park") or h["park"] or ""})
+    for it in h["trails"]:
+        if it["kind"] == "long_trail":
+            st = h["state"] or ""
+            return (f"long:{it['name']}:{st}",
+                    {"group_kind": "long_trail", "name": f"{it['name']} ({st})" if st else it["name"],
+                     "feature_kind": "long_trail", "osm_id": "", "lat": "", "lon": "", "ele_m": "",
+                     "state": st, "park": ""})
+    return None
+
+
+GCOLS = ["group_id", "group_kind", "name", "feature_kind", "osm_id", "state", "park", "lat", "lon", "ele_m",
+         "sites", "personal_sites", "pages", "trip_reports", "trail_guides", "median_distance_mi",
+         "median_gain_ft", "trails", "merged_osm_ids", "example_urls"]
+
+
+def median(vals):
+    vals = sorted(vals)
+    if not vals:
+        return ""
+    m = len(vals) // 2
+    v = vals[m] if len(vals) % 2 else (vals[m - 1] + vals[m]) / 2
+    return round(v, 1)
+
+
+def build_groups(rows):
+    groups = {}
+    for r in rows:
+        g = r.pop("_group")
+        if not g:
+            r["group_id"] = ""
+            continue
+        gid, info = g
+        r["group_id"] = gid
+        G = groups.setdefault(gid, {**info, "group_id": gid, "rows": []})
+        G["rows"].append(r)
+    groups = merge_same_name(groups)
+    for G in groups.values():
+        for r in G["rows"]:
+            r["group_id"] = G["group_id"]
+    out = []
+    for G in groups.values():
+        rs = G.pop("rows")
+        sites = {r["site"] for r in rs}
+        personal = {r["site"] for r in rs if r["site_kind"] == "personal"}
+        own = " ".join(NAME_NOISE.sub(" ", G["name"].lower()).split())
+        trails = Counter(t for r in rs for t in r["trails"].split("; ")
+                         if t and " ".join(NAME_NOISE.sub(" ", t.lower()).split()) != own)
+        # Examples: one page per site, personal sites and trip reports first.
+        ex, seen_sites = [], set()
+        for r in sorted(rs, key=lambda r: (r["site_kind"] != "personal", r["page_type"] != "trip_report",
+                                          -float(r["page_type_p"] or 0))):
+            if r["site"] not in seen_sites:
+                seen_sites.add(r["site"])
+                ex.append(r["url"])
+        out.append({**G, "sites": len(sites), "personal_sites": len(personal), "pages": len(rs),
+                    "trip_reports": sum(r["page_type"] == "trip_report" for r in rs),
+                    "trail_guides": sum(r["page_type"] == "trail_guide" for r in rs),
+                    "median_distance_mi": median([float(r["distance_mi"]) for r in rs if r["distance_mi"] != ""]),
+                    "median_gain_ft": median([float(r["gain_ft"]) for r in rs if r["gain_ft"] != ""]),
+                    "trails": "; ".join(f"{t} ({c})" for t, c in trails.most_common(5)),
+                    "example_urls": " ".join(ex[:5])})
+    out.sort(key=lambda g: (-g["sites"], -g["pages"], g["name"]))
+    return out
+
+
+NAME_NOISE = re.compile(r"\b(trail|trailhead|trails|loop|hike|path|the)\b")
+
+
+def km(a, b):
+    x = math.radians(b[1] - a[1]) * math.cos(math.radians((a[0] + b[0]) / 2))
+    return 6371 * math.hypot(x, math.radians(b[0] - a[0]))
+
+
+def merge_same_name(groups, radius_km=15):
+    """One trail is often several OSM ways, and the index has both "Bright
+    Angel" (a route) and "Bright Angel Trail". Merge groups whose names match
+    (ignoring trail/loop/hike) and lie within radius_km of each other,
+    chaining, so a long trail's segments end up together. The merged group
+    keeps the identity of its biggest member."""
+    by_name = defaultdict(list)
+    for gid, G in groups.items():
+        if G["lat"] != "" and G["lon"] != "":
+            by_name[" ".join(NAME_NOISE.sub(" ", G["name"].lower()).split())].append(gid)
+    parent = {gid: gid for gid in groups}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for ids in by_name.values():
+        for i, a in enumerate(ids):
+            pa = (float(groups[a]["lat"]), float(groups[a]["lon"]))
+            for b in ids[i + 1:]:
+                if km(pa, (float(groups[b]["lat"]), float(groups[b]["lon"]))) <= radius_km:
+                    parent[find(a)] = find(b)
+    merged = defaultdict(list)
+    for gid in groups:
+        merged[find(gid)].append(gid)
+    out = {}
+    for ids in merged.values():
+        ids.sort(key=lambda g: (-len({r["site"] for r in groups[g]["rows"]}),
+                                groups[g]["feature_kind"] not in ("peak", "lake", "waterfall", "cliff")))
+        head = dict(groups[ids[0]])
+        head["rows"] = [r for g in ids for r in groups[g]["rows"]]
+        head["merged_osm_ids"] = " ".join(str(groups[g]["osm_id"]) for g in ids[1:])
+        out[head["group_id"]] = head
+    return out
+
+
+def write_groups(groups, out_dir):
+    with gzip.open(os.path.join(out_dir, "hike_groups.tsv.gz"), "wt") as f:
+        f.write("\t".join(GCOLS) + "\n")
+        for g in groups:
+            f.write("\t".join(str(g[c]).replace("\t", " ") for c in GCOLS) + "\n")
 
 
 def main():
@@ -69,7 +203,9 @@ def main():
                     seen["dropped: no destination or trail"] += 1
                     continue
                 L = r["location"]
+                by_osm = {f["osm_id"]: f for f in r["features"] if f.get("osm_id")}
                 rows.append({
+                    "_group": group_key(h, by_osm), 
                     "name": h["name"].replace("\t", " "), "page_type": r["page_type"],
                     "page_type_p": r.get("page_type_p", ""),
                     "destinations": "; ".join(d["name"] for d in h["destinations"]),
@@ -82,6 +218,8 @@ def main():
                     "route": h["route"] or "", "difficulty": h["difficulty"] or "", "date": h["date"] or "",
                     "site": r["site"], "site_kind": kinds.get(r["site"], ""), "url": r["url"],
                 })
+    groups = build_groups(rows)
+    write_groups(groups, args.out_dir)
     with gzip.open(os.path.join(args.out_dir, "hikes.tsv.gz"), "wt") as f:
         f.write("\t".join(COLS) + "\n")
         for row in rows:
@@ -115,6 +253,33 @@ def main():
     w(f"\n{len(sites):,} sites contribute hikes; the top 10 contribute "
       f"{sum(v for _, v in sites.most_common(10)):,}.\n")
 
+    w("## Hike groups\n")
+    w("Pages about the same destination (or, without one, the same trail) form one group; see "
+      "`hike_groups.tsv.gz`.\n")
+    w("| | groups | hikes in them |\n|---|---:|---:|")
+    for label, lo, hi in (("1 site", 1, 1), ("2 sites", 2, 2), ("3–4 sites", 3, 4), ("5–9 sites", 5, 9),
+                          ("10+ sites", 10, 10 ** 9)):
+        gs = [g for g in groups if lo <= g["sites"] <= hi]
+        w(f"| {label} | {len(gs):,} | {sum(g['pages'] for g in gs):,} |")
+    w(f"| **all** | **{len(groups):,}** | **{sum(g['pages'] for g in groups):,}** |")
+    gk = Counter(g["group_kind"] for g in groups)
+    w("\nBy kind: " + ", ".join(f"{k} {v:,}" for k, v in gk.most_common()) + ".\n")
+    w("### Groups with the most personal sites\n")
+    w("| group | kind | state | sites | personal | median mi | median ft | top trails |\n"
+      "|---|---|---|---:|---:|---:|---:|---|")
+    for g in sorted(groups, key=lambda g: (-g["personal_sites"], -g["sites"]))[:30]:
+        w(f"| {g['name']} | {g['feature_kind']} | {g['state']} | {g['sites']} | {g['personal_sites']} | "
+          f"{g['median_distance_mi']} | {g['median_gain_ft']} | {g['trails'][:80]} |")
+    rnd2 = random.Random(6)
+    mid = [g for g in groups if 2 <= g["sites"] <= 6]
+    w("\n### Random groups with 2–6 sites")
+    w("")
+    w("| group | kind | state | sites | pages | median mi | trails | example |\n|---|---|---|---:|---:|---:|---|---|")
+    for g in rnd2.sample(mid, min(30, len(mid))):
+        first = g["example_urls"].split(" ")[0]
+        w(f"| {g['name']} | {g['feature_kind']} | {g['state']} | {g['sites']} | {g['pages']} | "
+          f"{g['median_distance_mi']} | {g['trails'][:60]} | [link]({first}) |")
+    w("")
     dest = defaultdict(lambda: [0, set(), set(), ""])
     for r in rows:
         if r["destinations"]:
