@@ -318,6 +318,21 @@ takes the resulting `graph-seeds-run-<n>` release as before: `sitecdx`
 matches sites by SURT host prefix, so `foo.blogspot.com` is looked up as its
 own site. Hub in-degrees count linking platform hosts only.
 
+**First run (`graph-seeds-run-3`, five releases, ~10 min each):** 2,976
+platform blogs link to ≥ 2 hubs (blogspot 1,936, wordpress.com 671, substack
+99, typepad 92, others 178). The top of the ranking is almost all personal
+hiking blogs (distancebackpacker, pacificnwseasons, jansjaunts,
+stuebysoutdoorjournal); the 2-hub tail is noisy (nps.gov plus one hub on
+weaving, politics and SEO blogs). The Stage 4 classify pass
+(`site-urls-run-7`, crawls 2026-34, 2023-40, 2020-50) kept only 184: many
+blogs have < 5 captures in recent crawls (`thin`), and diary-style URLs
+(`/2015/06/day-12.html`) rarely name the hike, so good blogs read as
+`off_topic` (runsuerun, mdk10outside, ucmountaineering). `site-urls` gained
+a `mode = posts` input for this batch: every English blog-post URL is a
+candidate, on `off_topic` sites too, and the content stages (site-content,
+page pass) decide. Crawls before 2018-39 have no language field, so the
+oldest crawl worth adding is 2018-51.
+
 Baseline before this pass: the hike table had 20 blogspot sites (454 hikes),
 one wixsite and **no** wordpress.com blogs, all found by the slug scan.
 

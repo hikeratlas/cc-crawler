@@ -230,12 +230,15 @@ def score(args):
         site_out.write("\t".join(fmt(row[k]) for k in scols) + "\n")
         n_sites += 1
 
-        if verdict not in KEEP:
+        if verdict not in KEEP and not (args.mode == "posts" and verdict == "off_topic"):
             continue
         for p, f in feats:
             # Only pages whose slug matches: on `hiking` sites, the other pages
-            # were ~3% relevant in the spot check (DESIGN.md, Stage 7).
-            if not f["match"]:
+            # were ~3% relevant in the spot check (DESIGN.md, Stage 7). In posts
+            # mode (platform blogs from the host graph, whose diary-style URLs
+            # rarely name the hike) every blog-post URL is kept and the content
+            # stages decide.
+            if not (f["match"] or (args.mode == "posts" and f["blog"])):
                 continue
             if urlrules.drop_reason(p[4], site):
                 continue
@@ -364,6 +367,9 @@ def main():
     s.add_argument("--seeds", help="seeds.tsv.gz from seed_report.py (for seed rank / hubs columns)")
     s.add_argument("--regions", default="data/gazetteer/regions.txt")
     s.add_argument("--parks", default="data/gazetteer/national_parks.txt")
+    s.add_argument("--mode", choices=("slug", "posts"), default="slug",
+                   help="slug: keep pages whose slug names a hike or place on hiking/mixed sites; posts: also keep "
+                        "every blog-post URL, on off_topic sites too (for platform blogs)")
     s.add_argument("--sites-out", required=True)
     s.add_argument("--candidates-out", required=True)
     r = sub.add_parser("report", help="merge partitions' site rows into a report")
