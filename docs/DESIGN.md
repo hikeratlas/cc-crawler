@@ -1297,6 +1297,21 @@ crawls (the latest of each year 2014–2021, plus 2022-27, 2023-40, 2024-26,
 government sites don't swamp the page pass. `site-urls` takes them with
 `site_source = file:<path>`.
 
+Personal-site harvest (`site-urls-run-9`): 1.62M candidates, but most from
+eval-list sites the plan step always adds (nationalgeographic.com,
+tripoto.com, theoutbound.com) and from big sites mislabelled `personal`
+(outsideonline.com, gearjunkie.com). Real enthusiast sites are small
+(median 239 candidates, p90 1,246; bobspirko.ca 491). `filter_candidates.py`
+(site-content inputs) gained `--sites` (keep a list), `--max-unmatched`
+(per-site cap on non-matching pages, chosen by URL hash; 1,000 here) and
+`--skip-urls` (pages already scored by earlier page passes), and always
+drops `data/excluded_sites.csv`. Result: 601k new pages from 1,603 sites;
+site-content runs with threshold 0 so known-good sites aren't re-judged on
+8 random pages.
+
+Platform blogs: site-content (`site-content-run-6`, 8 pages per blog, all
+candidates) kept 155 of 1,890 blogs, 71,749 URLs.
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |
