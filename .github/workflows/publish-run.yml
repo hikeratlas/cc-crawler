@@ -1,0 +1,52 @@
+# Publish the release a run should have made, from that run's artifacts.
+# For runs whose own "Publish release assets" step failed (e.g. the 403
+# described in docs/DESIGN.md, "Runner budget"). The tag is the one the run
+# would have used (<workflow>-run-<run number>), so downstream inputs work
+# unchanged. One small job on an Arm runner.
+name: publish-run
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Workflow run id (page-pass, site-urls, site-content or extract) whose artifacts to publish"
+        required: true
+
+permissions:
+  contents: write   # create the release
+  actions: read     # download the run's artifacts
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - name: Download artifacts and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.run_id }}
+        run: |
+          R="$GITHUB_REPOSITORY"
+          read -r name num < <(gh api "repos/$R/actions/runs/$RUN" -q '"\(.name) \(.run_number)"')
+          tag="$name-run-$num"
+          echo "run $RUN is $name #$num -> $tag"
+          if gh release view "$tag" -R "$R" >/dev/null 2>&1; then echo "::error::$tag already exists"; exit 1; fi
+          dl() { for p in "$@"; do gh run download "$RUN" -R "$R" -p "$p" -D a; done; }
+          f() { find a -path "a/$1" -type f | sort; }
+          case "$name" in
+            page-pass)    dl 'page-text-*' page-pass-report
+                          files=$(f 'page-pass-report/report.md'; f 'page-pass-report/pages.tsv.gz'; f 'page-pass-report/sites.tsv.gz'; f 'page-text-*/*.jsonl.gz') ;;
+            site-urls)    dl 'part-*' site-urls-report plan
+                          files=$(f 'site-urls-report/report.md'; f 'site-urls-report/sites.tsv.gz'; f 'part-*/candidates-part-*.tsv.gz'; f 'plan/seeds.tsv.gz') ;;
+            site-content) dl site-content-report
+                          files=$(f 'site-content-report/report.md'; f 'site-content-report/site_content.tsv.gz'; f 'site-content-report/candidates.tsv.gz') ;;
+            extract)      dl extract-report 'extracted-*'
+                          files=$(f 'extract-report/report.md'; f 'extract-report/hikes/*'; f 'extracted-*/*.jsonl.gz') ;;
+            *) echo "::error::don't know how to publish $name"; exit 1 ;;
+          esac
+          echo "$files"
+          [ -n "$files" ] || { echo "::error::no artifacts found"; exit 1; }
+          gh release create "$tag" -R "$R" --title "${name^} (run $num)" \
+            --notes "Published by publish-run from the artifacts of $name run $num ($GITHUB_SERVER_URL/$R/actions/runs/$RUN) after its own publish step failed. Same files the run would have attached; see report.md."
+          # One file per call keeps a transient failure from losing the whole batch.
+          for x in $files; do gh release upload "$tag" -R "$R" "$x"; done
