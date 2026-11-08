@@ -113,8 +113,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="page-pass-run-${{ github.run_number }}"
+          # No --target: tagging the run's own commit fails with 403 once main has newer
+          # workflow files (needs the workflows permission). See DESIGN.md.
           gh release create "$tag" --title "Page pass (run ${{ github.run_number }})" \
-            --notes "Every candidate page from ${{ inputs.site_content_release }} fetched and scored; pages kept at relevance >= ${{ inputs.threshold }}. pages.tsv.gz is the final page list; sites.tsv.gz has site_kind; page-text-*.jsonl.gz hold the fetched text. See report.md." \
-            --target "$GITHUB_SHA"
+            --notes "Every candidate page from ${{ inputs.site_content_release }} fetched and scored; pages kept at relevance >= ${{ inputs.threshold }}. pages.tsv.gz is the final page list; sites.tsv.gz has site_kind; page-text-*.jsonl.gz hold the fetched text. See report.md. Built from commit $GITHUB_SHA."
           gh release upload "$tag" out/report.md out/pages.tsv.gz out/sites.tsv.gz
           for f in text/*.jsonl.gz; do gh release upload "$tag" "$f"; done

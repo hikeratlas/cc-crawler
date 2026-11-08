@@ -198,9 +198,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="site-urls-run-${{ github.run_number }}"
+          # No --target: tagging the run's own commit fails with 403 once main has newer
+          # workflow files (needs the workflows permission). See DESIGN.md.
           gh release create "$tag" --title "Site URLs (run ${{ github.run_number }})" \
-            --notes "Sites from ${{ inputs.site_source }} (top ${{ inputs.top }}), crawls ${{ inputs.crawls }}, max ${{ inputs.max_blocks }} block(s)/site, ${{ inputs.partitions }} partitions, ${{ inputs.mode }} mode. See report.md." \
-            --target "$GITHUB_SHA"
+            --notes "Sites from ${{ inputs.site_source }} (top ${{ inputs.top }}), crawls ${{ inputs.crawls }}, max ${{ inputs.max_blocks }} block(s)/site, ${{ inputs.partitions }} partitions, ${{ inputs.mode }} mode. See report.md. Built from commit $GITHUB_SHA."
           files=(out/report.md out/sites.tsv.gz out/candidates-part-*.tsv.gz)
           [ -f plan/seeds.tsv.gz ] && files+=(plan/seeds.tsv.gz)
           gh release upload "$tag" "${files[@]}"
