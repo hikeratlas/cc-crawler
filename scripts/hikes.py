@@ -29,15 +29,17 @@ LIST_TITLE = re.compile(r"(?:^\s*|\b(?:top|best)\s+)\d{1,3}\s+(?:[\w'’-]+\s+){
                         r"\bbest\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|\b" + PLURAL + r"\s+(?:in|near|around)\b",
                         re.I)
 
-# Sites the slug scan (Stage 6b) found whose trail-named pages aren't hikes:
-# bike route maps, motorcycle roads, snowmobile reports, RC rock crawling,
-# radio tower listings, campsite booking, hotels, cabin rentals, park
-# directories, driving audio tours and local radio news. Checked by hand.
-NOT_HIKING_SITES = {
-    "ridepal.app", "ridehermes.app", "motorcycleroads.com", "snowtracks.com", "rcspotters.com",
-    "mra-raycom.com", "campnab.com", "hotelguides.com", "rentblueridgecabins.com", "stateparks.com",
-    "shakaguide.com", "kool1079.com",
-}
+# Sites left out of the hike table: aggregators, trail databases, generated
+# directories, content farms and non-hiking sites. The table is for linking
+# authentic, human-written posts to hikes. One row per site with a reason; see
+# data/excluded_sites.csv.
+EXCLUDED_SITES_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "excluded_sites.csv")
+
+
+def load_excluded(path):
+    with open(path, newline="") as f:
+        return {r["site"].strip().lower(): r["reason"].strip() for r in csv.DictReader(f) if r["site"].strip()}
+
 
 COLS = ["group_id", "name", "page_type", "page_type_p", "destinations", "destination_osm_ids", "trails", "trail_osm_ids",
         "park", "state", "lat", "lon", "distance_mi", "gain_ft", "route", "difficulty", "date",
@@ -198,7 +200,9 @@ def main():
     ap.add_argument("--in", dest="inputs", nargs="+", required=True)
     ap.add_argument("--sites", help="sites.tsv.gz from page_pass.py (adds site_kind)")
     ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--exclude", default=EXCLUDED_SITES_CSV, help="CSV of sites to leave out (site,reason,notes)")
     args = ap.parse_args()
+    excluded = load_excluded(args.exclude)
 
     kinds = {}
     if args.sites:
@@ -220,8 +224,8 @@ def main():
                     continue  # the same page in two combined batches
                 urls_seen.add(r["url"])
                 seen["hike pages"] += 1
-                if r["site"] in NOT_HIKING_SITES:
-                    seen["dropped: not a hiking site"] += 1
+                if r["site"] in excluded:
+                    seen[f"dropped: excluded site ({excluded[r['site']]})"] += 1
                     continue
                 if INDEX_TITLE.search(r["title"] or "") or INDEX_URL.search(r["url"]):
                     seen["dropped: index or archive page"] += 1
@@ -285,6 +289,17 @@ def main():
     sites = Counter(r["site"] for r in rows)
     w(f"\n{len(sites):,} sites contribute hikes; the top 10 contribute "
       f"{sum(v for _, v in sites.most_common(10)):,}.\n")
+    w("### Largest organisation sites\n")
+    w("Check these for aggregators, trail databases and generated pages; add any to "
+      "`data/excluded_sites.csv`.\n")
+    w("| site | hikes | example |\n|---|---:|---|")
+    first = {}
+    for r in rows:
+        first.setdefault(r["site"], r)
+    org = [(s_, v) for s_, v in sites.most_common() if first[s_]["site_kind"] != "personal"][:40]
+    for s_, v in org:
+        w(f"| {s_} | {v:,} | [{first[s_]['name'][:50]}]({first[s_]['url']}) |")
+    w("")
 
     w("## Hike groups\n")
     w("Pages about the same destination (or, without one, the same trail) form one group; see "

@@ -1,0 +1,73 @@
+site,reason,notes
+hiiker.app,aggregator,Generated route database; many map/reviews/stages sub-pages per trail
+trailrunproject.com,aggregator,User-submitted trail database (running)
+mtbproject.com,not hiking,Mountain-bike trail database; locations often wrong
+powderproject.com,not hiking,Backcountry ski route database
+theoutbound.com,aggregator,User-submitted adventure listings on one template
+protrails.com,aggregator,Trail database with gallery/map sub-pages
+10adventures.com,aggregator,Commercial trail database on one template
+ontariotrails.on.ca,aggregator,Trail directory
+fatmap.com,aggregator,Route platform (hike/bike/ski)
+myhikes.org,aggregator,Trail listings and photo-album sub-pages
+trails-viewer.com,generated,Pages generated from GPS tracks
+go-california.com,generated,SEO trail directory network
+go-colorado.com,generated,SEO trail directory network
+go-oregon.com,generated,SEO trail directory network
+go-utah.com,generated,SEO trail directory network
+go-wyoming.com,generated,SEO trail directory network
+trailsgalore.com,generated,Numbered trail-detail directory
+secretfalls.com,aggregator,Trail directory
+rootsrated.com,aggregator,Content-marketing trail listings
+campinghiking.net,generated,Trailhead directory
+freearenas.com,generated,Activity directory
+wikiloc.com,aggregator,User-submitted GPS tracks
+relive.com,aggregator,Generated activity videos
+outmap.pro,aggregator,Route platform
+xtremespots.com,aggregator,Activity directory
+letsgoplayoutside.com,aggregator,Trail directory
+hikerfeed.com,aggregator,Feed of other sites' posts
+campsitereservations.com,aggregator,Booking directory
+generalsystems.com,aggregator,TrailLink mirror
+nrtapplication.org,aggregator,National Recreation Trails database
+sedonapassport.com,aggregator,Trail directory
+mainetrailfinder.com,aggregator,Trail directory (print pages)
+trailfinder.info,aggregator,Trail directory (print pages)
+cttrailfinder.com,aggregator,Trail directory (print pages)
+nvtrailfinder.com,aggregator,Trail directory (print pages)
+stlctrails.com,aggregator,Trail directory (print pages)
+carolinathreadtrailmap.org,aggregator,Trail directory (print pages)
+aspentrailfinder.com,aggregator,Trail directory
+trailkeeper.org,aggregator,Trail directory
+therighttrail.org,aggregator,Trail directory
+waterfallhikes.com,generated,Generated waterfall pages
+horsetraildirectory.com,aggregator,Horse trail directory
+touristsecrets.com,content farm,SEO travel content
+explore.com,content farm,SEO travel content
+onlyinyourstate.com,content farm,Clickbait listicles
+winslowmaine.org,content farm,Machine-written travel posts
+hikedesert.com,content farm,Machine-written guides
+unicornadventure.blog,content farm,Machine-written guides
+mainattrakionz.com,content farm,SEO travel content
+tophorsetrails.com,content farm,Machine-written horse-trail posts
+yournpguide.com,content farm,SEO travel content
+tripexplorersguide.com,content farm,SEO travel content
+utahmountainbiking.com,not hiking,Mountain biking
+nemba.org,not hiking,Mountain biking
+thewashcycle.com,not hiking,Bike commuting news
+seattlebikeblog.com,not hiking,Bike news
+nwabiketrails.com,not hiking,Bike trails
+ridepal.app,not hiking,Bike route maps
+ridehermes.app,not hiking,Bike route maps
+motorcycleroads.com,not hiking,Motorcycle roads
+snowtracks.com,not hiking,Snowmobile trail reports
+rcspotters.com,not hiking,RC rock crawling
+mra-raycom.com,not hiking,Radio tower listings
+campnab.com,not hiking,Campsite booking
+hotelguides.com,not hiking,Hotels
+rentblueridgecabins.com,not hiking,Cabin rentals
+stateparks.com,aggregator,Park directory
+shakaguide.com,not hiking,Driving audio tours
+kool1079.com,not hiking,Local radio news
+wildwalks.com,not north america,Australian walks resolved to North American names
+trailswa.com.au,not north america,Australian trails
+drakensberghikes.com,not north america,South African hikes
