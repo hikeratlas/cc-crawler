@@ -29,6 +29,16 @@ LIST_TITLE = re.compile(r"(?:^\s*|\b(?:top|best)\s+)\d{1,3}\s+(?:[\w'’-]+\s+){
                         r"\bbest\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|\b" + PLURAL + r"\s+(?:in|near|around)\b",
                         re.I)
 
+# Sites the slug scan (Stage 6b) found whose trail-named pages aren't hikes:
+# bike route maps, motorcycle roads, snowmobile reports, RC rock crawling,
+# radio tower listings, campsite booking, hotels, cabin rentals, park
+# directories, driving audio tours and local radio news. Checked by hand.
+NOT_HIKING_SITES = {
+    "ridepal.app", "ridehermes.app", "motorcycleroads.com", "snowtracks.com", "rcspotters.com",
+    "mra-raycom.com", "campnab.com", "hotelguides.com", "rentblueridgecabins.com", "stateparks.com",
+    "shakaguide.com", "kool1079.com",
+}
+
 COLS = ["group_id", "name", "page_type", "page_type_p", "destinations", "destination_osm_ids", "trails", "trail_osm_ids",
         "park", "state", "lat", "lon", "distance_mi", "gain_ft", "route", "difficulty", "date",
         "site", "site_kind", "url"]
@@ -209,6 +219,9 @@ def main():
                     continue  # the same page in two combined batches
                 urls_seen.add(r["url"])
                 seen["hike pages"] += 1
+                if r["site"] in NOT_HIKING_SITES:
+                    seen["dropped: not a hiking site"] += 1
+                    continue
                 if INDEX_TITLE.search(r["title"] or "") or INDEX_URL.search(r["url"]):
                     seen["dropped: index or archive page"] += 1
                     continue
