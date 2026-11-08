@@ -753,6 +753,16 @@ for every kept page, writes one JSON record:
   names agree, one feature is well known (Wikidata qrank ≥ 1000), or two
   names agree and one has qrank ≥ 100. Otherwise the page has no location
   and no features.
+- **Long-distance trails** (Appalachian, Pacific Crest, Colorado Trail…: 310
+  names with ≥ 3 segments spread over > 300 km and qrank ≥ 300) are kept as
+  features with `long_trail: true` and no coordinates, and don't vote on the
+  region. Their segments are scattered across states, so any one segment's
+  location is arbitrary.
+- **Site boilerplate**: a name on ≥ 50% of a site's pages (sites with ≥ 10
+  pages) is navigation and is ignored for that site. Each site's pages sit in
+  one page-pass partition, so this is a two-pass job per partition.
+- State names inside a matched feature name ("Mount Washington") don't count
+  as mentions of the state.
 - **distance_mi** (title first, then a body number near "round trip",
   "total", "loop"…), **gain_ft**, **date** (from the URL, else the first
   "Month D, YYYY" in the text).
@@ -787,6 +797,23 @@ Known limits:
 - Distances from listicles and visitor guides are often one hike's number,
   not the page's.
 - The trip_report rate looks low.
+
+### Full run 1 and fixes (extract-run-1, 2026-11-08)
+
+Over all 262,586 pages: 69% located, 38% with ≥ 3 features. The top parks
+exposed three systematic errors, now fixed (above):
+
+- "Mount Washington" resolved to Washington state on 1,877 myhikes.org
+  pages, because the word "Washington" in the name counted as a state
+  mention.
+- The Appalachian Trail resolved to one Connecticut segment ("Hamlet Hill")
+  on 1,300 thetrek.co pages.
+- Nav menus put the same park on every page of a site: n2backpacking.com
+  had "Great Smoky Mountains NP" on 1,800 pages.
+
+On two partitions the fixes changed the state of 4,200 of 39,600 pages,
+mostly by un-locating photo, attachment and announcement pages that had only
+inherited a site's menu.
 
 The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with

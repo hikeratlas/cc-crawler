@@ -40,7 +40,7 @@ from collections import Counter, defaultdict
 # Names in the index that are mostly ordinary English phrases on a page.
 STOP_NAMES = {"out and back", "runner up", "back to back", "get out", "return policy", "main street",
               "black diamond", "easter egg", "canoe launch", "great wall", "great wall of china",
-              "first aid", "day hike", "day hikes", "food storage", "bear country", "free shipping"}
+              "first aid", "san francisco", "smoky mountain", "smoky mountains", "day hike", "day hikes", "food storage", "bear country", "free shipping"}
 KINDS = ("trail", "hike", "peak", "lake", "waterfall", "cliff", "park")
 GENERIC = set("""
 the a an of and at on to in
@@ -112,7 +112,25 @@ def load_index(path):
         names[key].append(f)
         if kind == "park" and len(toks) >= 2:
             parks[key] = name
-    return names, parks
+    return names, parks, long_trails(names)
+
+
+def long_trails(names, spread_km=300, min_qrank=300):
+    """Long-distance trails (Appalachian, Pacific Crest, Colorado Trail...).
+
+    The index holds them as many segments spread over states, so any one
+    segment's location is arbitrary. They stay features but don't vote on
+    a page's region.
+    """
+    out = set()
+    for key, fs in names.items():
+        trails = [f for f in fs if f["kind"] in ("trail", "hike")]
+        if len(trails) < 3 or max(f["qrank"] for f in trails) < min_qrank:
+            continue
+        a = (trails[0]["lat"], trails[0]["lon"])
+        if max(fast_km(a, (f["lat"], f["lon"])) for f in trails) > spread_km:
+            out.add(key)
+    return out
 
 
 def haversine_km(a, b):
@@ -296,33 +314,78 @@ def page_type(title, text, n_features):
     return "article"
 
 
-def extract(page, names, parks):
+def analyse(page, names, parks):
+    """First pass over a page: everything except the region."""
     text = page.get("text") or ""
     title = page.get("title") or ""
     full = title + "\n" + text
+    found = mentions(full, names)
     ctx_states = Counter(STATES[m.group(1).lower()] for m in STATE_RE.finditer(full))
     for m in ABBR_RE.finditer(full):
         ctx_states[ABBR[m.group(1)]] += 1
-    found = mentions(full, names)
-    ctx_parks = {k for k in found if k in parks}
-    kept, centre = resolve(found, names, ctx_states, ctx_parks)
-    feats = sorted(({"name": f["name"], "kind": f["kind"], "osm_id": f["osm_id"], "mentions": found[k],
-                     "lat": round(f["lat"], 5), "lon": round(f["lon"], 5), "park": f["park"], "state": f["state"],
-                     **({"ele_m": f["ele_m"]} if f["ele_m"] else {}), **({"km": f["km"]} if f["km"] else {})}
-                    for k, f in kept), key=lambda f: (-f["mentions"], f["name"]))
-    loc = None
-    if feats:
-        states = Counter(f["state"] for f in feats if f["state"])
-        pk = Counter(f["park"] for f in feats if f["park"])
-        loc = {"lat": round(centre[0], 4), "lon": round(centre[1], 4),
-               "state": states.most_common(1)[0][0] if states else None,
-               "park": pk.most_common(1)[0][0] if pk else None}
-    return {
+    # "Mount Washington" is not a mention of Washington state.
+    for key, c in found.items():
+        for m in STATE_RE.finditer(key):
+            ctx_states[STATES[m.group(1).lower()]] -= c
+    ctx_states = Counter({k: v for k, v in ctx_states.items() if v > 0})
+    rec = {
         "url": page["url"], "site": page.get("row", {}).get("site"), "title": title,
-        "page_type": page_type(title, text, len(feats)), "location": loc, "features": feats[:25],
+        "page_type": None, "location": None, "features": [],
         "distance_mi": distance_mi(text, title), "gain_ft": gain_ft(text), "date": page_date(page["url"], text),
         "words": page.get("words"),
     }
+    return rec, found, ctx_states, (title, text)
+
+
+def feature(f, mentions_n, located=True):
+    out = {"name": f["name"], "kind": f["kind"], "osm_id": f["osm_id"], "mentions": mentions_n,
+           "lat": round(f["lat"], 5), "lon": round(f["lon"], 5), "park": f["park"], "state": f["state"]}
+    if not located:  # a long trail: no single location
+        out.update(osm_id=None, lat=None, lon=None, park=None, state=None, long_trail=True)
+    if f["ele_m"]:
+        out["ele_m"] = f["ele_m"]
+    if f["km"]:
+        out["km"] = f["km"]
+    return out
+
+
+def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
+    """Second pass: drop site boilerplate, resolve the region, type the page."""
+    found = Counter({k: v for k, v in found.items() if k not in boiler})
+    ctx_parks = {k for k in found if k in parks}
+    local = Counter({k: v for k, v in found.items() if k not in long})
+    kept, centre = resolve(local, names, ctx_states, ctx_parks)
+    feats = [feature(f, found[k]) for k, f in kept]
+    if kept or ctx_states:
+        feats += [feature(max(names[k], key=lambda f: f["qrank"]), found[k], located=False)
+                  for k in found if k in long]
+    feats.sort(key=lambda f: (-f["mentions"], f["name"]))
+    if kept:
+        states = Counter(f["state"] for _, f in kept if f["state"])
+        pk = Counter(f["park"] for _, f in kept if f["park"])
+        rec["location"] = {"lat": round(centre[0], 4), "lon": round(centre[1], 4),
+                           "state": states.most_common(1)[0][0] if states else None,
+                           "park": pk.most_common(1)[0][0] if pk else None}
+    elif ctx_states and any(k in long for k in found):
+        # e.g. a thru-hike post: no local features, but the page names a state
+        rec["location"] = {"lat": None, "lon": None, "state": ctx_states.most_common(1)[0][0], "park": None}
+    rec["features"] = feats[:25]
+    rec["page_type"] = page_type(title, text, len(feats))
+    return rec
+
+
+def boilerplate(founds, min_pages=10, share=0.5):
+    """Names on at least `share` of a site's pages are navigation, not content."""
+    if len(founds) < min_pages:
+        return set()
+    df = Counter(k for f in founds for k in f)
+    return {k for k, c in df.items() if c >= share * len(founds)}
+
+
+def extract(page, names, parks, long=frozenset()):
+    """One page on its own (no boilerplate removal)."""
+    rec, found, ctx, (title, text) = analyse(page, names, parks)
+    return finish(rec, found, ctx, title, text, names, parks, long)
 
 
 def main():
@@ -333,8 +396,8 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    names, parks = load_index(args.index)
-    print(f"index: {len(names):,} names, {len(parks):,} park names", file=sys.stderr)
+    names, parks, long = load_index(args.index)
+    print(f"index: {len(names):,} names, {len(parks):,} park names, {len(long):,} long trails", file=sys.stderr)
     keep = None
     if args.keep:
         with gzip.open(args.keep, "rt") as f:
@@ -343,13 +406,23 @@ def main():
     stats = Counter()
     with gzip.open(args.out, "wt") as out:
         for path in sorted({p for pat in args.pages for p in glob.glob(pat)}):
+            # Pass 1: analyse every page, grouped by site. Each site's pages
+            # sit in one page-pass partition, so per-file grouping is complete.
+            by_site = defaultdict(list)
             op = gzip.open if path.endswith(".gz") else open
             with op(path, "rt") as f:
                 for line in f:
                     page = json.loads(line)
                     if page.get("error") or (keep is not None and page["url"] not in keep):
                         continue
-                    r = extract(page, names, parks)
+                    rec, found, ctx, tt = analyse(page, names, parks)
+                    by_site[rec["site"]].append((rec, found, ctx, tt))
+            # Pass 2: drop each site's boilerplate names, resolve, write.
+            for site, items in by_site.items():
+                boiler = boilerplate([it[1] for it in items])
+                stats["boilerplate names"] += len(boiler)
+                for rec, found, ctx, (title, text) in items:
+                    r = finish(rec, found, ctx, title, text, names, parks, long, boiler)
                     out.write(json.dumps(r, ensure_ascii=False) + "\n")
                     n += 1
                     stats[r["page_type"]] += 1
