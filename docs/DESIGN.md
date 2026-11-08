@@ -753,11 +753,19 @@ for every kept page, writes one JSON record:
   names agree, one feature is well known (Wikidata qrank ≥ 1000), or two
   names agree and one has qrank ≥ 100. Otherwise the page has no location
   and no features.
-- **Long-distance trails** (Appalachian, Pacific Crest, Colorado Trail…: 310
-  names with ≥ 3 segments spread over > 300 km and qrank ≥ 300) are kept as
+- **Long-distance trails** (Appalachian, Pacific Crest, Arizona Trail…: 34
+  names) are kept as
   features with `long_trail: true` and no coordinates, and don't vote on the
   region. Their segments are scattered across states, so any one segment's
-  location is arbitrary.
+  location is arbitrary. A long trail needs:
+  - a trail-like name (trail, way, path, trace…);
+  - ≥ 3 segments spread over > 300 km;
+  - qrank ≥ 100;
+  - segments that form a chain: ≥ 80% of them have another within 40 km.
+
+  The chain test was added after run 3, which also counted common names
+  ("Lost Lake", "Skyline Trail": 310 names) as long trails and so threw away
+  their locations.
 - **Site boilerplate**: a name on ≥ 50% of a site's pages (sites with ≥ 10
   pages) is navigation and is ignored for that site. Each site's pages sit in
   one page-pass partition, so this is a two-pass job per partition.
@@ -891,6 +899,34 @@ Whitney. About 24 of 30 random hike rows were usable. The misses:
 - a list article ("7 Best Hikes in Mt Rainier") typed trail_guide;
 - a nearby lake picked over the title's own lake;
 - a Grand Canyon page placed in Utah.
+
+### Hike fixes after run 3 (2026-11-08)
+
+- **One-word names from the title.** A one-word peak, lake or waterfall
+  name counts when all of these hold:
+  - it is capitalised in the title and never lower case in the text;
+  - it isn't next to another capitalised word or followed by a comma or
+    state abbreviation ("Ogden, Utah", "Chris Townsend");
+  - it isn't a state name;
+  - it is well known (qrank ≥ 1000);
+  - its state is named on the page.
+
+  Peaks called "Mount X" also answer to "X" ("Hiking Moosilauke").
+- **Title votes.** A name in the title gets 3 extra votes for the page's
+  region.
+- **Peaks over routes.** When the index has a route ("hike") and a peak,
+  lake or waterfall with the same name within 10 km, the feature is the
+  peak ("Catoctin Mountain", "Mount Mitchell").
+- **Long trails.** The chain test (above).
+- **Hike table filters.** Index or archive pages and list titles
+  ("7 Best Hikes in…") are dropped from `hikes.tsv.gz`.
+
+Adding archive and list features to the page-type model didn't help (75%
+vs 76%, within noise), so those pages are filtered by title and URL instead.
+On partitions 5 and 7, 870 hikes changed destination or trail, and
+eyeballing showed mostly fixes: Convict Lake, Lake Isabelle, Union Falls,
+Catoctin Mountain, the Grand Canyon in Arizona. 360 index and list pages
+were dropped.
 
 The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with

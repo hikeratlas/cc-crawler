@@ -16,7 +16,17 @@ import gzip
 import json
 import os
 import random
+import re
 from collections import Counter, defaultdict
+
+# Pages that aren't one hike even when typed trip_report / trail_guide.
+INDEX_TITLE = re.compile(r"\b(archives?|categor(?:y|ies)|tag(?:ged)?|posts|search results|page \d+|"
+                         r"destinations|recent|latest)\b|^(?:blog|home|hiking|hikes|trails?|backpacking)\b\s*(?:[-|–]|$)", re.I)
+INDEX_URL = re.compile(r"/(tag|tags|category|categories|archive|archives|author|page/\d+|search)(/|$)|[?&]page=", re.I)
+PLURAL = r"(?:hikes|trails|walks|waterfalls|falls|things|places|views|spots|lakes|peaks|summits|routes|adventures)"
+LIST_TITLE = re.compile(r"(?:^\s*|\b(?:top|best)\s+)\d{1,3}\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|"
+                        r"\bbest\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|\b" + PLURAL + r"\s+(?:in|near|around)\b",
+                        re.I)
 
 COLS = ["name", "page_type", "page_type_p", "destinations", "destination_osm_ids", "trails", "trail_osm_ids",
         "park", "state", "lat", "lon", "distance_mi", "gain_ft", "route", "difficulty", "date",
@@ -46,6 +56,12 @@ def main():
                 if not h:
                     continue
                 seen["hike pages"] += 1
+                if INDEX_TITLE.search(r["title"] or "") or INDEX_URL.search(r["url"]):
+                    seen["dropped: index or archive page"] += 1
+                    continue
+                if LIST_TITLE.search(r["title"] or ""):
+                    seen["dropped: list title"] += 1
+                    continue
                 if not r["location"]:
                     seen["dropped: no location"] += 1
                     continue
