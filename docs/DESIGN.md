@@ -572,6 +572,43 @@ Once we have high-confidence seed blogs, use them to find more:
 Guard against drift. Every round's additions are compared against
 `negatives.csv` and spot-checked.
 
+## Stage 6b: Find sites by hike names in their URLs
+
+The web-graph seeds only find sites that hubs link to, and the domain graph
+can't see platform blogs. Personal blogs put the hike's name in the URL
+(`/2019/08/panorama-ridge/`), and Stage 9 gave us a list of real hike names.
+`scripts/slug_scan.py` scans one crawl's columnar URL index for them. It
+reads only the host, path, status, MIME and language columns, with range
+requests: ~70 MB and ~40 s per index file, ~21 GB per crawl. The
+`slug-scan` workflow runs it as 16 Arm jobs.
+
+- **Names.** Multi-word names from the autosuggest index. A name counts only
+  if it contains a landform or trail word (lake, peak, falls, ridge,
+  trail…) or has qrank ≥ 100: OSM has trails called "Happy Birthday" and
+  "Peanut Butter". Names ending in Trail, Loop or Hike also match without
+  that last word.
+- **Skipped.** Matches followed by a street word ("ridge-avenue"), and
+  paths our URL rules already drop (real estate, shops, attachments).
+- **Per site** (registered domain, or host under blogspot and other
+  platforms) we count:
+  - distinct names;
+  - names in URLs that also contain a hiking word ("cue names");
+  - hits and pages.
+- **Score.** Each name is weighted by its rarity across sites (idf). Cue
+  names count in full and other names at 0.1. The total is scaled down
+  when a site's hiking URLs are under 2% of its pages (lyft.com,
+  macys.com).
+
+**Pilot (4 index files of CC-MAIN-2026-34).**
+- The top of the ranking is mostly hiking and outdoor sites: known ones
+  (southshoretrails.com, southdakota.com) and new personal blogs
+  (photomomlinda, gulplife, roadtripsandhikes, marcy-twss and
+  mountainwandering, all on blogspot).
+- 13 of the 28 known sites in those files ranked in the top 100.
+- Remaining noise is mostly real-estate sites and big general sites. The
+  existing site-content and page-pass stages filter candidates by their
+  content anyway, so this stage only needs a good shortlist.
+
 ## Stage 7: Content spot checks (cheap, sampled)
 
 Range-fetch a **sample** of candidate URLs (e.g. a few hundred per run) from
@@ -1016,6 +1053,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 4: URL index validation | ✅ first full run | all 88.7k seeds classified; 9,153 sites kept after harvest |
 | 5: Candidate URL list | ✅ first full run | 2.0M candidate URLs in the `site-urls-run-4` release; **first deliverable** |
 | 6: Snowball | ⬜ not started | |
+| 6b: Slug scan | 🟨 pilot | `slug-scan` workflow; finds sites by hike names in URLs, including platform blogs |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
 | 9: Extraction | 🟨 first pass | page-type model (76%), hike table and hike groups (~20k groups) added; `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
