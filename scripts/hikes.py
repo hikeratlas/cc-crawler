@@ -196,6 +196,7 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     seen = Counter()
+    urls_seen = set()
     rows = []
     for path in sorted({p for pat in args.inputs for p in glob.glob(pat)}):
         with gzip.open(path, "rt") as f:
@@ -204,6 +205,9 @@ def main():
                 h = r.get("hike")
                 if not h:
                     continue
+                if r["url"] in urls_seen:
+                    continue  # the same page in two combined batches
+                urls_seen.add(r["url"])
                 seen["hike pages"] += 1
                 if INDEX_TITLE.search(r["title"] or "") or INDEX_URL.search(r["url"]):
                     seen["dropped: index or archive page"] += 1

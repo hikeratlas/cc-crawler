@@ -17,6 +17,14 @@ on:
         description: "Hiker Atlas autosuggest index"
         default: "https://public.hikeratlas.com/north-america.autosuggest.db"
         required: true
+      combine_with:
+        description: "Optional: earlier extract releases (comma-separated) whose pages join the hike table and groups"
+        default: ""
+        required: false
+      combine_page_pass:
+        description: "Optional: their page-pass releases (comma-separated), for site kinds"
+        default: ""
+        required: false
       publish:
         description: "Attach outputs to a GitHub release"
         type: boolean
@@ -86,8 +94,19 @@ jobs:
         run: |
           ls -la out/
           python3 -I scripts/extract_report.py --in 'out/extracted-*.jsonl.gz' --out report.md
-          gh release download "${{ inputs.page_pass_release }}" --pattern sites.tsv.gz --dir pp
-          python3 -I scripts/hikes.py --in 'out/extracted-*.jsonl.gz' --sites pp/sites.tsv.gz --out-dir hikes
+          # Site kinds from this batch's page pass plus any combined ones.
+          mkdir -p pp prev
+          i=0
+          for rel in ${{ inputs.page_pass_release }} $(echo "${{ inputs.combine_page_pass }}" | tr ',' ' '); do
+            gh release download "$rel" --pattern sites.tsv.gz --dir "pp/$i"; i=$((i + 1))
+          done
+          { zcat pp/0/sites.tsv.gz | head -1; for f in pp/*/sites.tsv.gz; do zcat "$f" | tail -n +2; done; } | gzip > pp/sites.tsv.gz
+          # Pages from earlier extract releases join the hike table and groups.
+          for rel in $(echo "${{ inputs.combine_with }}" | tr ',' ' '); do
+            gh release download "$rel" --pattern 'extracted-*.jsonl.gz' --dir "prev/$rel"
+          done
+          python3 -I scripts/hikes.py --in 'out/extracted-*.jsonl.gz' 'prev/*/extracted-*.jsonl.gz' \
+            --sites pp/sites.tsv.gz --out-dir hikes
           cat report.md hikes/hikes_report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Publish release assets
         if: ${{ inputs.publish }}
