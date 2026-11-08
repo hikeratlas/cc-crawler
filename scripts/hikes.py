@@ -195,6 +195,46 @@ def write_groups(groups, out_dir):
             f.write("\t".join(str(g[c]).replace("\t", " ") for c in GCOLS) + "\n")
 
 
+LCOLS = ["osm_id", "primary", "role", "feature", "feature_kind", "state", "group_id", "url", "title", "site",
+         "site_kind", "page_type", "date", "distance_mi", "gain_ft"]
+
+
+def url_key(u):
+    """http/https, www., /index.php and a trailing slash don't make a different post."""
+    u = re.sub(r"^https?://(www\.)?", "", u.strip(), flags=re.I)
+    return u.replace("/index.php/", "/").rstrip("/").lower()
+
+
+def write_links(rows, groups, out_dir):
+    """links.tsv.gz: one row per (OSM feature, post), for showing posts on a
+    feature's page. primary = 1 for the feature the post's group is about
+    (and the features merged into that group); the other destinations,
+    trails and parks the post names get primary = 0."""
+    by_gid = {g["group_id"]: g for g in groups}
+    links = {}
+    for r in rows:
+        feats = []
+        g = by_gid.get(r["group_id"])
+        if g and g["osm_id"] != "":
+            for oid in [g["osm_id"]] + g["merged_osm_ids"].split():
+                feats.append((str(oid), 1, g["group_kind"], g["name"], g["feature_kind"]))
+        feats += [(str(oid), 0, role, name, kind) for oid, role, name, kind in r.pop("_features")]
+        for oid, prim, role, name, kind in feats:
+            k = (oid, url_key(r["url"]))
+            if k in links and links[k]["primary"] >= prim:
+                continue
+            links[k] = {"osm_id": f"osm:{oid}", "primary": prim, "role": role, "feature": name, "feature_kind": kind,
+                        "state": r["state"], "group_id": r["group_id"], "url": r["url"], "title": r["name"],
+                        "site": r["site"], "site_kind": r["site_kind"], "page_type": r["page_type"],
+                        "date": r["date"], "distance_mi": r["distance_mi"], "gain_ft": r["gain_ft"]}
+    out = sorted(links.values(), key=lambda l: (l["osm_id"], -l["primary"], l["site_kind"] != "personal", l["url"]))
+    with gzip.open(os.path.join(out_dir, "links.tsv.gz"), "wt") as f:
+        f.write("\t".join(LCOLS) + "\n")
+        for l in out:
+            f.write("\t".join(str(l[c]).replace("\t", " ") for c in LCOLS) + "\n")
+    return len(out), len({l["osm_id"] for l in out})
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--in", dest="inputs", nargs="+", required=True)
@@ -242,7 +282,11 @@ def main():
                 L = r["location"]
                 by_osm = {f["osm_id"]: f for f in r["features"] if f.get("osm_id")}
                 rows.append({
-                    "_group": group_key(h, by_osm), 
+                    "_group": group_key(h, by_osm),
+                    "_features": [(it["osm_id"], role, it["name"], it.get("kind", ""))
+                                  for role, items in (("destination", h["destinations"]), ("trail", h["trails"]),
+                                                      ("park", h.get("parks") or []))
+                                  for it in items if it.get("osm_id")],
                     "name": h["name"].replace("\t", " "), "page_type": r["page_type"],
                     "page_type_p": r.get("page_type_p", ""),
                     "destinations": "; ".join(d["name"] for d in h["destinations"]),
@@ -257,6 +301,7 @@ def main():
                 })
     groups = build_groups(rows)
     write_groups(groups, args.out_dir)
+    n_links, n_linked = write_links(rows, groups, args.out_dir)
     with gzip.open(os.path.join(args.out_dir, "hikes.tsv.gz"), "wt") as f:
         f.write("\t".join(COLS) + "\n")
         for row in rows:
@@ -301,6 +346,9 @@ def main():
         w(f"| {s_} | {v:,} | [{first[s_]['name'][:50]}]({first[s_]['url']}) |")
     w("")
 
+    w("## Links\n")
+    w(f"`links.tsv.gz` has {n_links:,} (OSM feature, post) links across {n_linked:,} features: each post is linked "
+      "to the feature its group is about (`primary` = 1) and to the other destinations, trails and parks it names.\n")
     w("## Hike groups\n")
     w("Pages about the same destination (or, without one, the same trail) form one group; see "
       "`hike_groups.tsv.gz`.\n")

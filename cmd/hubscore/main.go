@@ -1,4 +1,4 @@
-// Command hubscore implements Stages 1–2 of docs/DESIGN.md: it resolves the
+// Command hubscore implements Stages 1–2 (and, with -graph host, Stage 2b) of docs/DESIGN.md: it resolves the
 // hub domains from data/hubs.csv to ids in a Common Crawl domain-level web
 // graph, streams the graph's edges once, and writes one row per domain that
 // links to at least one hub (plus every domain in the eval lists, so recall
@@ -51,8 +51,17 @@ func main() {
 	hubOut := flag.String("hub-out", "out/hub_stats.tsv", "per-hub output (TSV)")
 	metaOut := flag.String("meta-out", "out/meta.json", "run metadata (JSON)")
 	maxEdges := flag.Int64("max-edges", 0, "stop after this many edges (0 = all); for smoke tests")
+	graph := flag.String("graph", "domain", "domain: score domains (Stage 2); host: score platform-hosted blogs on the host graph (Stage 2b)")
+	platformsCSV := flag.String("platforms", "data/platforms.csv", "host mode: blog platforms whose subdomains are scored")
 	flag.Parse()
 	start := time.Now()
+	if *graph == "host" {
+		runHost(hostOpts{release: *release, platformsCSV: *platformsCSV, evalCSVs: *evalCSVs, hubsCSV: *hubsCSV,
+			out: *out, hubOut: *hubOut, metaOut: *metaOut, maxEdges: *maxEdges})
+		return
+	} else if *graph != "domain" {
+		log.Fatalf("unknown -graph %q", *graph)
+	}
 
 	if *vertices == "" {
 		*vertices = fmt.Sprintf("%s/%s/domain/%s-domain-vertices.txt.gz", graphBase, *release, *release)

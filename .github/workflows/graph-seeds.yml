@@ -16,6 +16,11 @@ on:
         description: "Comma-separated web graph releases (see https://commoncrawl.org/web-graphs)"
         default: "cc-main-2026-jul-aug-sep,cc-main-2025-may-jun-jul,cc-main-2024-may-jun-jul,cc-main-2023-may-sep-nov,cc-main-2022-may-jun-aug"
         required: true
+      graph:
+        description: "domain: score domains (Stage 2). host: score blogs on hosting platforms (data/platforms.csv) on the host graph (Stage 2b)"
+        type: choice
+        options: [domain, host]
+        default: domain
       min_hubs:
         description: "Seed threshold: minimum distinct hubs linked"
         default: "2"
@@ -53,6 +58,7 @@ jobs:
         release: ${{ fromJSON(needs.plan.outputs.releases) }}
     env:
       RELEASE: ${{ matrix.release }}
+      GRAPH: ${{ inputs.graph }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,11 +70,12 @@ jobs:
         # Common Crawl's CDN answers bursts with 403, so a single 403 does not
         # mean the file is missing. Retry before giving up.
         run: |
-          base="https://data.commoncrawl.org/projects/hyperlinkgraph/$RELEASE/domain/$RELEASE-domain"
+          base="https://data.commoncrawl.org/projects/hyperlinkgraph/$RELEASE/$GRAPH/$RELEASE-$GRAPH"
+          ext=txt.gz; [ "$GRAPH" = host ] && ext=paths.gz
           for f in vertices edges; do
             ok=
             for i in 1 2 3 4 5 6; do
-              code=$(curl -s -o /dev/null -w '%{http_code}' -r 0-0 "$base-$f.txt.gz")
+              code=$(curl -s -o /dev/null -w '%{http_code}' -r 0-0 "$base-$f.$ext")
               if [ "$code" = 206 ] || [ "$code" = 200 ]; then ok=1; break; fi
               echo "$f: HTTP $code (attempt $i)"; sleep $((i * 10))
             done
@@ -86,10 +93,10 @@ jobs:
       - name: Build
         run: go build -o hubscore ./cmd/hubscore
 
-      - name: Score domains against hubs (streams ~9 GB)
+      - name: Score domains (or platform hosts) against hubs (streams ~9-13 GB)
         run: |
           mkdir -p "out/$RELEASE"
-          ./hubscore -release "$RELEASE" \
+          ./hubscore -graph "$GRAPH" -release "$RELEASE" \
             -out "out/$RELEASE/domain_hub_scores.tsv.gz" \
             -hub-out "out/$RELEASE/hub_stats.tsv" \
             -meta-out "out/$RELEASE/meta.json"
@@ -138,8 +145,8 @@ jobs:
           RELEASES: ${{ inputs.releases }}
         run: |
           tag="graph-seeds-run-${{ github.run_number }}"
-          gh release create "$tag" --title "Graph seeds (run ${{ github.run_number }})" \
-            --notes "Hub scores and ranked seeds merged from: $RELEASES. See report.md." \
+          gh release create "$tag" --title "Graph seeds (run ${{ github.run_number }}, ${{ inputs.graph }} graph)" \
+            --notes "Hub scores and ranked seeds (${{ inputs.graph }} graph) merged from: $RELEASES. See report.md." \
             --target "$GITHUB_SHA"
           gh release upload "$tag" out/seeds.tsv.gz out/report.md
           for d in out/*/; do
