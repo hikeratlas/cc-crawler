@@ -1160,11 +1160,12 @@ extraction fixes above. Batch 1: `site-content-run-3` (5,544 sites,
 partitions to a dead runner and published `page-pass-run-3` without it;
 the re-run's complete outputs are the run's artifacts). Batch 2:
 `site-content-run-4` (977 sites, 196k URLs), `page-pass-run-4`,
-`extract-run-8`. Combined: `extract-run-9`.
+`extract-run-8`. Combined: `extract-run-9`; with the exclusions below,
+`extract-run-10` (the current hike table).
 
-| | `extract-run-7` | `extract-run-9` | authentic sites only |
+| | `extract-run-7` | `extract-run-9` | `extract-run-10` (authentic only) |
 |---|---:|---:|---:|
-| hikes | 68,129 | 92,963 | 46,861 |
+| hikes | 68,129 | 92,963 | 46,863 |
 | from personal sites | 10,633 | 20,869 | 20,252 |
 | personal share | 16% | 22% | 43% |
 | hike groups | 22,663 | 30,231 | 16,282 |
@@ -1242,7 +1243,7 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 6b: Slug scan | 🟨 first batch done | `slug-scan` workflow; 4,303 new sites → 977 after Stages 4–7 (`site-content-run-4`) |
 | 7: Content spot checks | ✅ page pass run 1 | 262,586 pages from 4,403 sites, ~73% precision (est.); text archived |
 | 8: WET recall sample | ⬜ not started | |
-| 9: Extraction | 🟨 first pass | two batches combined in `extract-run-9`; authentic sites only: 46,861 hikes in 16,282 groups (43% personal); page-type model (76%); `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
+| 9: Extraction | 🟨 first pass | two batches combined, authentic sites only, in `extract-run-10`: 46,863 hikes in 16,282 groups (43% personal); page-type model (76%); `extract-run-2`: page type, OSM features and region, distance, gain, date; 64% of pages located, ~90% of those in the right state |
 
 ## Open questions
 
