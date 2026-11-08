@@ -34,6 +34,11 @@ COLS = ["group_id", "name", "page_type", "page_type_p", "destinations", "destina
         "site", "site_kind", "url"]
 
 
+def squash(s):
+    """Lower case, letters and digits only: 'The "Crack" Trail' -> 'thecracktrail'."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
 def group_key(h, by_osm):
     """The hike's group: its main destination, else its main trail.
 
@@ -42,7 +47,17 @@ def group_key(h, by_osm):
     posts about the Appalachian Trail in Maine. Returns (id, info) where
     info describes the group's feature.
     """
-    for kind, items in (("destination", h["destinations"]), ("trail", h["trails"])):
+    # A page about a named trail ("Tonquin Valley Trail", "La Cloche
+    # Silhouette Trail") groups by the trail, not by whichever lake or
+    # peak it mentions most: trail first when the title names a trail
+    # before any destination ("Green Gardens Trail: Hiking in Gros Morne").
+    title = squash(h["name"])
+    pos = lambda items: min((title.find(squash(i["name"])) for i in items
+                             if i.get("osm_id") and squash(i["name"]) in title), default=10 ** 6)
+    order = (("destination", h["destinations"]), ("trail", h["trails"]))
+    if pos(h["trails"]) < pos(h["destinations"]):
+        order = order[::-1]
+    for kind, items in order:
         for it in items:
             if it.get("osm_id"):
                 f = by_osm.get(it["osm_id"], {})
