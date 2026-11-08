@@ -866,6 +866,32 @@ On partition 5, 8,149 hike pages gave 3,429 hikes. 48% of hike pages were
 dropped for having no location: mostly non-US trails, and one-word peak
 names ("Moosilauke") that matching ignores.
 
+### Full run 3 (extract-run-3, 2026-11-08)
+
+Page types over 262,586 pages: other 52%, trail_guide 26%, trip_report 12%,
+list_article 7%, area_guide 3%. These 100,509 trip reports and trail guides
+gave **62,079 hikes** from 3,069 sites; 8,152 of the hikes are from
+personal sites. Field coverage among the hikes:
+
+| field | share |
+|---|---:|
+| destination | 64% |
+| trail | 64% |
+| distance | 67% |
+| gain | 28% |
+| date (trip reports) | 18% |
+| difficulty | 25% |
+
+Two sites dominate: trailrunproject.com and theoutbound.com supply 23% of
+hikes. The most-covered destinations are what you'd expect: Mount Rainier
+on 214 sites, then Crater Lake, Angels Landing, Half Dome and Mount
+Whitney. About 24 of 30 random hike rows were usable. The misses:
+- archive or index pages typed trail_guide ("Blog Archives",
+  "Destinations - Hiking");
+- a list article ("7 Best Hikes in Mt Rainier") typed trail_guide;
+- a nearby lake picked over the title's own lake;
+- a Grand Canyon page placed in Utah.
+
 The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with
 `extracted-*.jsonl.gz` and a report.
