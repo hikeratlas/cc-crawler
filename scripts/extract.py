@@ -93,10 +93,10 @@ LOWER_OK = {"of", "the", "and", "de", "du", "la", "le", "des", "on", "at", "in",
 
 
 def norm(name):
-    s = name.lower().replace("’", "'")
+    s = re.sub(r"[’']", "", name.lower())  # "Angel's Landing" == "Angels Landing"
     s = re.sub(r"\bmt\.?\b", "mount", s)
     s = re.sub(r"\bst\.?\b", "saint", s)
-    s = re.sub(r"[^a-z0-9' ]+", " ", s)
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
     return " ".join(s.split())
 
 
@@ -105,6 +105,7 @@ def load_index(path):
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     names = defaultdict(list)
     parks = {}
+    pending = []  # aliases, added only where no feature has that name
     q = (f"SELECT kind, name, osm_id, park, state, lat, lon, ele, km, qrank FROM items "
          f"WHERE kind IN ({','.join('?' * len(KINDS))}) AND country IN ('United States','Canada')")
     for kind, name, osm_id, park, state, lat, lon, ele, km, qrank in con.execute(q, KINDS):
@@ -130,9 +131,28 @@ def load_index(path):
             if len(toks) == 1:
                 continue
         names[key].append(f)
+        pending += [(alias, f) for alias in aliases(kind, toks)]
         if kind == "park" and len(toks) >= 2:
             parks[key] = name
+    real = set(names)
+    for alias, f in pending:
+        if alias not in real:
+            names[alias].append(f)
     return names, parks, long_trails(names)
+
+
+def aliases(kind, toks):
+    """Other spellings of a name: OSM's "Yonah Mountain" is usually written
+    "Mount Yonah", and "Lower Yosemite Fall" as "Lower Yosemite Falls"."""
+    out = []
+    if kind == "peak" and len(toks) >= 2:
+        if toks[0] == "mount":
+            out.append(" ".join(toks[1:] + ["mountain"]))
+        elif toks[-1] == "mountain":
+            out.append(" ".join(["mount"] + toks[:-1]))
+    if kind == "waterfall" and toks[-1] == "fall":
+        out.append(" ".join(toks[:-1] + ["falls"]))
+    return [a for a in out if a not in STOP_NAMES]
 
 
 LONG_NAME = re.compile(r"\b(trail|way|path|trace|greenway|route|traverse)\b")
@@ -234,15 +254,34 @@ def resolve(found, names, ctx_states, ctx_parks, radius_km=100, max_cands=25):
         cands[key] = [(f, weight(f), (f["lat"], f["lon"])) for f in cs]
     if not cands:
         return [], None
-    centres = [p for cs in cands.values() for _, _, p in cs]
-    best, best_score = None, -1.0
+    centres = list(dict.fromkeys(p for cs in cands.values() for _, _, p in cs))
+    scored = []
     for c in centres:
         score = 0.0
         for key, cs in cands.items():
             m = max((w for _, w, p in cs if fast_km(c, p) <= radius_km), default=0.0)
             score += found[key] * m
-        if score > best_score:
-            best, best_score = c, score
+        scored.append((score, c))
+    scored.sort(key=lambda t: -t[0])
+    # The best-scoring centre can fail the confidence gate ("Chief Trail" in
+    # Indiana) while a lower one is in the state the page names most (the
+    # Stawamus Chief, British Columbia): take that one.
+    top_state = ctx_states.most_common(1)[0][0] if ctx_states else None
+    for i, (_, best) in enumerate(scored):
+        kept = keep_near(best, cands, radius_km)
+        if not kept:
+            continue
+        ok = (confident(kept, ctx_states) if i == 0 else
+              any(f["state"] == top_state for _, f in kept))
+        if ok:
+            pts = [(f["lat"], f["lon"]) for k, f in kept for _ in range(found[k])]
+            centre = (statistics.median(p[0] for p in pts), statistics.median(p[1] for p in pts))
+            return kept, centre
+    return [], None
+
+
+def keep_near(best, cands, radius_km):
+    """One feature per name within radius_km of the centre."""
     kept = []
     for key, cs in cands.items():
         # Same weight: prefer the peak/lake/waterfall over a route of the same
@@ -259,20 +298,18 @@ def resolve(found, names, ctx_states, ctx_parks, radius_km=100, max_cands=25):
                 if same:
                     f = min(same, key=lambda g: fast_km((f["lat"], f["lon"]), (g["lat"], g["lon"])))
             kept.append((key, f))
-    if not kept:
-        return [], None
-    # Confidence gate: a weak match ("Great Wall", "Lynn Hill") must not place
-    # a page in a state the page never names. Accept the region when one of
-    # its states is named on the page, three names agree, one feature is
-    # well known (qrank >= 1000: Mount Shasta, Havasu Falls), or two names
-    # agree and one is moderately known (qrank >= 100).
+    return kept
+
+
+def confident(kept, ctx_states):
+    """Confidence gate: a weak match ("Great Wall", "Lynn Hill") must not place
+    a page in a state the page never names. Accept the region when one of
+    its states is named on the page, three names agree, one feature is
+    well known (qrank >= 1000: Mount Shasta, Havasu Falls), or two names
+    agree and one is moderately known (qrank >= 100)."""
     top = max(f["qrank"] for _, f in kept)
-    if not (any(f["state"] in ctx_states for _, f in kept) or len(kept) >= 3 or top >= 1000
-            or (len(kept) >= 2 and top >= 100)):
-        return [], None
-    pts = [(f["lat"], f["lon"]) for k, f in kept for _ in range(found[k])]
-    centre = (statistics.median(p[0] for p in pts), statistics.median(p[1] for p in pts))
-    return kept, centre
+    return (any(f["state"] in ctx_states for _, f in kept) or len(kept) >= 3 or top >= 1000
+            or (len(kept) >= 2 and top >= 100))
 
 
 NUM = r"(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)"
@@ -465,6 +502,12 @@ def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
 
 
 HIKE_TYPES = ("trip_report", "trail_guide")
+PARK_SUFFIX = re.compile(r"\s*(?:(?:state|provincial|national|regional|county|city)\s+)?"
+                         r"(?:park|forest|preserve|recreation area|natural area|conservation area|"
+                         r"public reserved land|sanctuary|reserve|wildlife area)$")
+PARK_WORDS = {"beach", "nature", "center", "centre", "area", "woods", "land", "public", "reserved", "wildlife",
+              "conservation", "community", "memorial", "city", "town", "county", "state"}
+BIG_PARK = re.compile(r"\b(national|wilderness|provincial park)\b")
 DESTINATION_KINDS = ("peak", "lake", "waterfall", "cliff")
 TITLE_SPLIT = re.compile(r"\s+[|•·]\s+|\s+[-–—]\s+(?=[^-–—]*$)")
 DIFFICULTY = re.compile(r"\bdifficulty\s*(?:rating|level)?\s*:?\s*(easy|moderate|strenuous|difficult|hard|"
@@ -499,6 +542,13 @@ def hike(rec, title, text, kept, found, names, long):
     trails = [pick(by_key[k]) for k in in_title if k in by_key and by_key[k]["kind"] in ("trail", "hike")]
     trails += [{"name": max(names[k], key=lambda f: f["qrank"])["name"], "kind": "long_trail", "osm_id": None}
                for k in in_title if k in long]
+    # "Crowders Mountain State Park" in the title: the peak Crowders Mountain.
+    park_keys = [k for k in in_title if k in by_key and by_key[k]["kind"] == "park"]
+    for k in park_keys:
+        base = PARK_SUFFIX.sub("", k)
+        f = by_key.get(base)
+        if base != k and f and f["kind"] in DESTINATION_KINDS and pick(f) not in dests:
+            dests.append(pick(f))
     if not dests:
         cands = sorted(((found[k], f) for k, f in kept if f["kind"] in DESTINATION_KINDS and found[k] >= 2),
                        key=lambda t: -t[0])
@@ -507,6 +557,12 @@ def hike(rec, title, text, kept, found, names, long):
         cands = sorted(((found[k], f) for k, f in kept if f["kind"] in ("trail", "hike") and found[k] >= 2),
                        key=lambda t: -t[0])
         trails = [pick(cands[0][1])] if cands else []
+    # A small park or preserve named in the title is the hike itself
+    # ("Barrett Preserve", "Otis Farm Bird Sanctuary"); big, well-known
+    # parks hold many different hikes.
+    parks = [] if (dests or trails) else [pick(by_key[k]) for k in park_keys
+                                         if by_key[k]["qrank"] < 1000 and not BIG_PARK.search(k)
+                                         and set(PARK_SUFFIX.sub("", k).split()) - GENERIC - PARK_WORDS]
     d = DIFFICULTY.search(text)
     r = ROUTE.search(title + " " + text[:3000])
     loc = rec["location"] or {}
@@ -514,6 +570,7 @@ def hike(rec, title, text, kept, found, names, long):
         "name": hike_name(title, rec.get("site")),
         "destinations": dests[:4],
         "trails": trails[:4],
+        "parks": parks[:1],
         "park": loc.get("park"),
         "state": loc.get("state"),
         "distance_mi": rec["distance_mi"],

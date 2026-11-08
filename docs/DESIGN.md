@@ -1085,6 +1085,73 @@ The `extract` workflow runs this over all 16 page-text partitions (Arm
 matrix) and publishes an `extract-run-<n>` release with
 `extracted-*.jsonl.gz` and a report.
 
+### Where pages and sites are lost (2026-11-08)
+
+The data is for linking blog posts to hikes, so recall at each filter
+matters more than a few extra junk pages, which later stages remove.
+
+**Site content (Stage 7) was the biggest cut for the slug-scan batch:**
+2,060 sites in, 780 kept. Hand labels on 80 dropped and 40 kept sites
+(from their URLs and best titles): ~26% of dropped sites were real US/CA
+hiking sites (hikethehudsonvalley.com, jameskaiser.com,
+floridarambler.com, car-free.ca, algonquinpark.com, christiededman.com),
+and ~70% of kept sites were. Estimated precision 72%, recall 63%. Three
+causes, seen in the scores of the 5 sampled pages:
+
+- **Bot-check interstitials.** Common Crawl captured "One moment,
+  please..." pages (11 words, p = 0.03) for some sites; christiededman.com
+  had 4 of 5. Only 0.4% of batch-1 page-pass pages, but fatal when a site
+  is judged on 5.
+- **Image attachment pages** (WordPress photo pages, 0–35 words).
+- **"km" counted as foreign.** `NONUS` in `page_features.py` included km
+  and kilometres, which Canadian pages use: avontrail.ca, car-free.ca,
+  algonquinpark.com and pnoa.ca all lost points. All five watch-list
+  hikes are Canadian.
+
+Fixes: km/kilometres removed from `NONUS` and the page model retrained on
+the same 650 labelled pages (held-out precision/recall unchanged, since
+they are almost all US); `site_content.py` leaves pages under 50 words out
+of a site's mean. Estimated on the labelled sites: precision 70%, recall
+75%; batch 2 keeps 977 sites instead of 780. Keeping the mean of the best
+two pages would reach ~86% recall at ~61% precision. Small personal blogs
+also miss the slug-scan cutoff (score ≥ 50); golivexplore.com and
+myoverdueadventures.com scored 12 and 20.
+
+**Extraction drops 37% of trip reports and trail guides.** A labelled
+sample of 60 "no location" and 60 "no destination or trail" pages from
+batch 1:
+
+- No location: ~55% correctly dropped (Wikiloc pages outside North
+  America, the Alps, Skye, India, news, races). Of the ~45% real hikes,
+  most name a trail the index doesn't have (Berlin Lake Trail, Pu'u o
+  Hulu); a few fail the confidence gate because the best-scoring centre
+  is in the wrong state while the page names the right one ("Chief Trail",
+  Indiana vs the Stawamus Chief, British Columbia).
+- No destination or trail: ~40% are real single hikes. Most are a small
+  park or preserve with no named peak or trail (Barrett Preserve, Otis
+  Farm Bird Sanctuary, Sondermann Park), and some are spelling mismatches:
+  "Angel's Landing" vs "Angels Landing", "Mount Yonah" vs OSM's "Yonah
+  Mountain", "Lower Yosemite Falls" vs "Lower Yosemite Fall".
+
+Fixes in `extract.py`: apostrophes are dropped when matching names;
+"Mount X" ↔ "X Mountain" and "X Fall" → "X Falls" aliases, added only
+where no feature has that name (otherwise "Mount Wilson" turned into
+"Wilson Mountain"); when the best centre fails the gate, the best centre
+in the state the page names most is used; "Crowders Mountain State Park"
+in a title gives the peak Crowders Mountain as the destination; and a
+small park or preserve named in the title (qrank < 1000, not national,
+wilderness or provincial, with a real name beyond "conservation area")
+becomes the hike, grouped as a `park` group. Two looser gate rules
+(accepting rare names, or a title name with ≤ 2 features) were tried and
+dropped: they let in generic phrases like "Above the Rim" (Texas) and
+"Roadside Attraction".
+
+Effect on two batch-1 partitions (24k pages): located 14,256 → 15,066
+(+6%), hikes 4,538 → 4,818 (+6%; 286 gained, 6 lost). About 70–75% of a
+sample of gained hikes were right, about the same as the table overall.
+Most come from small parks and preserves, plus the apostrophe fix
+("Queens Garden Trail", "Sam's Knob").
+
 ## GitHub Actions layout (proposed)
 
 | Workflow | Trigger | Jobs |
