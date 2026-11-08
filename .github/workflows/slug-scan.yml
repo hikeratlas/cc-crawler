@@ -1,0 +1,104 @@
+# Stage 6b: find hiking sites by the hike names in their URLs. Scans one
+# crawl's columnar (Parquet) URL index for paths that name real trails, peaks,
+# lakes and parks from the Hiker Atlas index, tallies hits per site, and
+# publishes a slug-scan-run-<n> release with a ranked site list. All jobs run
+# on Arm runners. See docs/DESIGN.md, Stage 6b.
+name: slug-scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      crawl:
+        description: "Crawl to scan"
+        default: "CC-MAIN-2026-34"
+        required: true
+      parts:
+        description: "Scan jobs (the crawl's ~300 index files are split between them)"
+        default: "16"
+        required: true
+      page_pass_release:
+        description: "page-pass release whose sites count as already known"
+        default: "page-pass-run-1"
+        required: true
+      index_url:
+        description: "Hiker Atlas autosuggest index"
+        default: "https://public.hikeratlas.com/north-america.autosuggest.db"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # read the page-pass release, create the slug-scan-run-<n> release
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - id: plan
+        run: echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.parts }}))))")" >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pyarrow
+        run: python3 -m pip install --user pyarrow==17.0.0
+      - name: Download index and file list
+        run: |
+          mkdir -p in out
+          curl -fsSL --retry 5 -o in/index.db "${{ inputs.index_url }}"
+          curl -fsSL --retry 5 -o in/paths.gz "https://data.commoncrawl.org/crawl-data/${{ inputs.crawl }}/cc-index-table.paths.gz"
+      - name: Scan
+        run: |
+          python3 scripts/slug_scan.py scan --paths in/paths.gz --part "${{ matrix.part }}" --parts "${{ inputs.parts }}" \
+            --index in/index.db --out "out/hits-${{ matrix.part }}.tsv.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slug-hits-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  merge:
+    needs: scan
+    if: ${{ !cancelled() }}   # merge whichever parts succeeded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: slug-hits-*
+          path: hits/
+          merge-multiple: true
+      - name: Merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la hits/
+          gh release download "${{ inputs.page_pass_release }}" --pattern sites.tsv.gz --dir pp
+          python3 -I scripts/slug_scan.py merge --in 'hits/*.tsv.gz' --known pp/sites.tsv.gz --out-dir out
+          cat out/slug_report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slug-scan-report
+          path: out/
+          retention-days: 30
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="slug-scan-run-${{ github.run_number }}"
+          gh release create "$tag" --title "Slug scan (run ${{ github.run_number }})" \
+            --notes "Sites whose URLs name real hikes, from the ${{ inputs.crawl }} URL index. slug_sites.tsv.gz is ranked by score; see slug_report.md." \
+            --target "$GITHUB_SHA"
+          gh release upload "$tag" out/slug_report.md out/slug_sites.tsv.gz
