@@ -1411,6 +1411,22 @@ verdicts and harvest sampling. 11 of the 33 hikes have no report found.
    at site level, but their trip-report sections are what we want.
 5. Lower the slug-scan cut-off for personal-looking sites.
 
+**Fix 1, name-aware slug match (done).** `scripts/slugnames.py` finds Hiker
+Atlas names in URL slugs. A name qualifies if it ends in a landform word,
+starts with mount/mt/mont/lake, or is a trail name minus "trail"
+("kings throne"). Regions, generic-only names, and a short stoplist ("co
+op", "water treatment") are excluded. `site_report.py score --index` and
+`filter_candidates.py --index` use it: in site-urls, a name in the slug makes
+the page a match. In site-content, rows with `slug_match = 0` whose URL names a hike are kept
+in slug mode and skip all mode's random cap. Both workflows download the
+index by default (`index_url`). On the truth sites' candidates it adds
+matches for 11% of previously unmatched rows, mostly real (Sevenmile Mesa,
+Phantom Falls, Oyster Dome), and recovers 10 of 10 sampled misses. On one
+partition of the deep personal harvest it keeps ~2,000 more pages that the
+cap dropped. site-content now takes several site-urls releases at once
+(comma-separated). Rows are written in one column order and de-duplicated
+by URL, so existing slug-mode harvests can be re-filtered in one run.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the

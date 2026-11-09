@@ -41,9 +41,11 @@ import random
 import re
 import sys
 from collections import Counter, defaultdict
+import os
 from urllib.parse import urlsplit
 
-sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import slugnames  # noqa: E402
 import urlrules  # noqa: E402  (shared with filter_candidates.py)
 
 csv.field_size_limit(sys.maxsize)
@@ -187,9 +189,12 @@ def score(args):
             h, st, pl = bool(HIKE.search(slug)), bool(STRICT.search(slug)), bool(PLACE.search(slug))
             g = bool(geo_r.search(slug) or geo_p.search(slug))
             o = bool(OTHER.search(slug))
+            gear = bool(GEAR.search(slug))
+            # A Hiker Atlas name in the slug (/mount-northover/) counts too; see slugnames.py.
+            nm = bool(args.index) and not gear and slugnames.match(slug, args.index) is not None
             f = {"hike": h, "strict": st, "place": pl, "geo": g, "other": o,
-                 "blog": bool(BLOG.search(path)), "shop": bool(SHOP.search(path)), "gear": bool(GEAR.search(slug)),
-                 "match": (h or (pl and g)) and not o}
+                 "blog": bool(BLOG.search(path)), "shop": bool(SHOP.search(path)), "gear": gear,
+                 "match": (h or (pl and g) or nm) and not o}
             feats.append((p, f))
         n, n_eng = len(allp), len(feats)
 
@@ -388,6 +393,7 @@ def main():
     s.add_argument("--seeds", help="seeds.tsv.gz from seed_report.py (for seed rank / hubs columns)")
     s.add_argument("--regions", default="data/gazetteer/regions.txt")
     s.add_argument("--parks", default="data/gazetteer/national_parks.txt")
+    s.add_argument("--index", help="Hiker Atlas autosuggest.db: also match slugs that name a hike or landform")
     s.add_argument("--mode", choices=("slug", "posts", "all"), default="slug",
                    help="slug: keep pages whose slug names a hike or place on hiking/mixed sites; posts: also keep "
                         "every blog-post URL, on off_topic sites too (for platform blogs); all: keep every English "
