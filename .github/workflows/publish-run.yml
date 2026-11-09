@@ -35,7 +35,7 @@ jobs:
           f() { find a -path "a/$1" -type f | sort; }
           case "$name" in
             page-pass)    dl 'page-text-*' page-pass-report
-                          files=$(f 'page-pass-report/report.md'; f 'page-pass-report/pages.tsv.gz'; f 'page-pass-report/sites.tsv.gz'; f 'page-text-*/*.jsonl.gz') ;;
+                          files=$(f 'page-pass-report/report.md'; f 'page-pass-report/pages.tsv.gz'; f 'page-pass-report/sites.tsv.gz'; f 'page-pass-report/scored.tsv.gz'; f 'page-text-*/*.jsonl.gz') ;;
             site-urls)    dl 'part-*' site-urls-report plan
                           files=$(f 'site-urls-report/report.md'; f 'site-urls-report/sites.tsv.gz'; f 'part-*/candidates-part-*.tsv.gz'; f 'plan/seeds.tsv.gz') ;;
             site-content) dl site-content-report

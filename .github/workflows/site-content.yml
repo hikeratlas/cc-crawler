@@ -40,7 +40,7 @@ on:
         default: "0"
         required: true
       skip_pages_from:
-        description: "Optional: page-pass releases (comma-separated) whose scored pages are left out"
+        description: "Optional: page-pass releases (comma-separated) whose tried pages (kept or not) are left out"
         default: ""
         required: false
       index_url:
@@ -70,8 +70,12 @@ jobs:
           for r in $(echo "${{ inputs.site_urls_release }}" | tr ',' ' '); do
             gh release download "$r" --pattern 'candidates-part-*.tsv.gz' --dir "cand/$r"; done
           [ -n "${{ inputs.index_url }}" ] && curl -fsSL --retry 5 -o index.db "${{ inputs.index_url }}"
-          skip=(); for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
-            gh release download "$r" --pattern pages.tsv.gz --output "skip-$r.tsv.gz" --clobber; skip+=("skip-$r.tsv.gz"); done
+          skip=(); if [ -n "${{ inputs.skip_pages_from }}" ]; then
+            # Every page already tried (not just the kept ones): scored.tsv.gz, or the page text of older runs.
+            for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
+              gh release download "$r" --pattern scored.tsv.gz --dir "skip/$r" 2>/dev/null \
+                || gh release download "$r" --pattern 'pages-part-*.jsonl.gz' --dir "skip/$r"; done
+            python3 -I scripts/scored_urls.py --out skip.tsv.gz 'skip/*/*.gz'; skip=(skip.tsv.gz); fi
           extra=(); [ -n "${{ inputs.site_list }}" ] && extra+=(--sites "${{ inputs.site_list }}")
           [ ${#skip[@]} -gt 0 ] && extra+=(--skip-urls "${skip[@]}")
           [ -f index.db ] && extra+=(--index index.db)
@@ -137,8 +141,12 @@ jobs:
           for r in $(echo "${{ inputs.site_urls_release }}" | tr ',' ' '); do
             gh release download "$r" --pattern 'candidates-part-*.tsv.gz' --dir "cand/$r"; done
           [ -n "${{ inputs.index_url }}" ] && curl -fsSL --retry 5 -o index.db "${{ inputs.index_url }}"
-          skip=(); for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
-            gh release download "$r" --pattern pages.tsv.gz --output "skip-$r.tsv.gz" --clobber; skip+=("skip-$r.tsv.gz"); done
+          skip=(); if [ -n "${{ inputs.skip_pages_from }}" ]; then
+            # Every page already tried (not just the kept ones): scored.tsv.gz, or the page text of older runs.
+            for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
+              gh release download "$r" --pattern scored.tsv.gz --dir "skip/$r" 2>/dev/null \
+                || gh release download "$r" --pattern 'pages-part-*.jsonl.gz' --dir "skip/$r"; done
+            python3 -I scripts/scored_urls.py --out skip.tsv.gz 'skip/*/*.gz'; skip=(skip.tsv.gz); fi
           extra=(); [ -n "${{ inputs.site_list }}" ] && extra+=(--sites "${{ inputs.site_list }}")
           [ ${#skip[@]} -gt 0 ] && extra+=(--skip-urls "${skip[@]}")
           [ -f index.db ] && extra+=(--index index.db)
