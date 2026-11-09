@@ -1470,6 +1470,25 @@ pages now get past site-content but are lost later: page type `other` (3),
 no location (3), wrong place (2). That makes extraction the next
 bottleneck for these sites, along with site verdicts and harvest coverage.
 backpacker.com is now the largest organisation site (1,588 rows).
+Kept (user decision).
+
+**Fix 2: unseeded blogs and trip-report sections (2026-11-09).** The
+trace's "blogspot.com judged off_topic" bucket was misleading. Those 7
+Blogger blogs were never seeded: they link to no hub, so the host graph
+skips them, and the slug scan covered only CC-MAIN-2026-34. Their pages
+are almost all in the 2017–2019 crawls. Slug scans of 2017-51, 2018-51,
+2019-51 and 2021-49 (about 20 minutes each) are meant to find blogs like
+them.
+
+Forum and club trip reports (14ers.com, climber.org, oregonhikers.org,
+backpackinglight.com, ...) sit on sites that are hubs, or that look off topic
+as a whole. `data/sections.tsv` lists their trip-report sections as host +
+path prefix. `sitecdx` reads only those sections (cap
+`-max-blocks-per-section`, default 200), `urlrules` keeps their query-string
+URLs (`?trip=`, `viewtopic.php?t=`), and `filter_candidates --sites`
+matches a section's site. In a CC-MAIN-2023-40 sample, wta.org, nwhikers.net,
+trailjournals.com and clubtread.com had no captures (WTA appears to block the
+crawler); they stay listed for other crawls.
 
 ## Runner budget
 

@@ -1,0 +1,19 @@
+# Trip-report sections: host + path prefix, then a note. These sites look off
+# topic (or are hubs) as a whole, but these sections hold hikers' own trip
+# reports. site-urls reads the first column (file:data/sections.tsv); sitecdx
+# reads only the section; urlrules keeps their query-string URLs
+# (?trip=, viewtopic.php?t=). See docs/DESIGN.md, "Recall on rare hikes".
+14ers.com/php14ers/tripreport.php	Colorado peaks: member trip reports (?trip=)
+climber.org/reports/	Sierra/California climbing and peak-bagging trip reports
+oregonhikers.org/forum/viewtopic.php	Oregon Hikers forum topics (trip reports and more; the page model decides)
+nwhikers.net/forums/viewtopic.php	NW Hikers forum topics
+vftt.org/threads/	Views from the Top (Northeast) forum threads
+adkforum.com/forum/the-adirondack-forum/trip-reports/	Adirondack Forum trip reports
+backpackinglight.com/forums/topic/	Backpacking Light forum topics
+backpackinglight.com/member-trip-reports/	Backpacking Light member trip reports
+cascadeclimbers.com/forum/topic/	Cascade Climbers forum topics
+hikearizona.com/photoset.php	Hike Arizona member trip logs
+highsierratopix.com/community/viewtopic.php	High Sierra Topix forum topics
+backcountrypost.com/threads/	Backcountry Post forum threads
+trailjournals.com/journal/	Long-trail journals
+postholer.com/journal/	Long-trail journals
