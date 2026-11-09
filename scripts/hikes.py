@@ -24,6 +24,10 @@ from collections import Counter, defaultdict
 INDEX_TITLE = re.compile(r"\b(archives?|categor(?:y|ies)|tag(?:ged)?|posts|search results|page \d+|"
                          r"destinations|recent|latest)\b|^(?:blog|home|hiking|hikes|trails?|backpacking)\b\s*(?:[-|–]|$)", re.I)
 INDEX_URL = re.compile(r"/(tag|tags|category|categories|archive|archives|author|page/\d+|search)(/|$)|[?&]page=", re.I)
+# Blog date archives: /2017/, /2017/07/, /2017/07/14/ with nothing after, Blogger's
+# 2010_12_01_archive.html and ?updated-max= listings. The deep (all-mode) harvest
+# brings these in; each lists many posts, so its features are rarely one hike.
+DATE_URL = re.compile(r"/(?:19|20)\d\d(?:/[01]\d(?:/[0-3]\d)?)?/?(?:[?#]|$)|_archive\.html|[?&]updated-max=", re.I)
 PLURAL = r"(?:hikes|trails|walks|waterfalls|falls|things|places|views|spots|lakes|peaks|summits|routes|adventures)"
 LIST_TITLE = re.compile(r"(?:^\s*|\b(?:top|best)\s+)\d{1,3}\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|"
                         r"\bbest\s+(?:[\w'’-]+\s+){0,4}" + PLURAL + r"\b|\b" + PLURAL + r"\s+(?:in|near|around)\b",
@@ -247,7 +251,14 @@ def main():
     kinds = {}
     if args.sites:
         with gzip.open(args.sites, "rt") as f:
-            kinds = {r["site"]: r["site_kind"] for r in csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE)}
+            # A site can appear in several page passes (the file concatenates them) with
+            # different kinds; the pass that fetched the most of its pages wins, so the
+            # result doesn't depend on file order.
+            most = {}
+            for r in csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE):
+                n = int(r.get("fetched") or 0)
+                if r["site"] not in most or n > most[r["site"]]:
+                    most[r["site"]], kinds[r["site"]] = n, r["site_kind"]
 
     os.makedirs(args.out_dir, exist_ok=True)
     seen = Counter()
@@ -267,7 +278,8 @@ def main():
                 if r["site"] in excluded:
                     seen[f"dropped: excluded site ({excluded[r['site']]})"] += 1
                     continue
-                if INDEX_TITLE.search(r["title"] or "") or INDEX_URL.search(r["url"]):
+                title = r["title"] or ""
+                if INDEX_TITLE.search(title) or INDEX_URL.search(r["url"]) or DATE_URL.search(r["url"]):
                     seen["dropped: index or archive page"] += 1
                     continue
                 if LIST_TITLE.search(r["title"] or ""):

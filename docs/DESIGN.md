@@ -1313,6 +1313,46 @@ site-content runs with threshold 0 so known-good sites aren't re-judged on
 Platform blogs: site-content (`site-content-run-6`, 8 pages per blog, all
 candidates) kept 155 of 1,890 blogs, 71,749 URLs.
 
+**Results (2026-11-09).** Page passes 5 (platform blogs) and 6 (personal
+deep) were published from their artifacts with `publish-run`, then
+extracted, each combined with everything before it:
+
+| | hikes | personal | bobspirko.ca | benmassey.ca |
+|---|---:|---:|---:|---:|
+| `extract-run-11` (batches 1–2) | 46,725 | ~20,100 | 93 | 10 |
+| `extract-run-12` (+ platform blogs) | 50,270 | 22,366 | 93 | 10 |
+| `extract-run-13` (+ personal deep) | 87,544 | 60,163 | 384 | 21 |
+| local rebuild with the fixes below | 83,543 | 52,256 | 384 | 21 |
+
+Watch list (hikes, before → after): Panorama Ridge 15 → 29, Tonquin
+Valley 4 → 4, La Cloche Silhouette 5 → 7, Green Gardens 4 → 5, Half Dome
+179 → 301, Angels Landing 224 → 357.
+
+A 60-row sample of the new personal hikes showed a new failure: about a
+fifth were blog **date archives** (`/2017/07/`, `/2016`,
+`2010_12_01_archive.html`), which the all-mode harvest brings in.
+`hikes.py` now drops them by URL (`DATE_URL`; ~4,000 rows, none from the
+two enthusiast sites). Title rules ("July 2017") were tried and dropped:
+they also hit real posts with date titles.
+
+Second fix: a site can be in several page passes with different
+`site_kind`s (172 sites, almost all `personal` in batch 1–2 and
+`organisation` in the deep pass, whose non-post pages score lower).
+`hikes.py` used to take whichever file came last. It now takes the kind
+from the pass that fetched the most of the site's pages, so the result no
+longer depends on file order. Neither label is reliably right on these
+sites (americanalpineclub.org and outsideonline.com are organisations;
+stephabegg.com and denverdavis.com are personal); a better personal model
+is future work.
+
+A 50-row sample of the rebuilt table's new hikes: ~68% right (the
+`extract-run-10` sample was 72%). Misses: features resolved in the wrong
+region (Hilo's Rainbow Falls → California, Kilimanjaro → Mount Whitney),
+travel listicles ("Six Mistakes to Avoid at Lake Louise"), and American
+Alpine Club accident reports (climbing; 777 rows, left in for now).
+australianhiker.com.au was added to the exclusions. Extract releases now
+also carry `links.tsv.gz`.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
