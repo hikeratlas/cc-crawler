@@ -18,6 +18,7 @@ import math
 import os
 import random
 import re
+from urllib.parse import unquote
 from collections import Counter, defaultdict
 
 # Pages that aren't one hike even when typed trip_report / trail_guide.
@@ -311,6 +312,22 @@ def main():
                     "route": h["route"] or "", "difficulty": h["difficulty"] or "", "date": h["date"] or "",
                     "site": r["site"], "site_kind": kinds.get(r["site"], ""), "url": r["url"],
                 })
+    # One row per page: the same page over http and https, or with different
+    # %-escapes, counts once. Photo galleries (SmugMug's /Gallery/i-AbC123, numbered
+    # pages) repeat a gallery's text on every photo page: when the last path segment
+    # is an id rather than a slug, keep one row per (site, title, parent folder).
+    ID_SEG = re.compile(r"^(?:i-[a-z0-9]{4,12}|\d+|(?=[a-z]*\d)[a-z0-9]{5,12})(?:\.\w+)?$")
+    best = {}
+    for row in rows:
+        u = unquote(re.sub(r"^https?://(www\.)?", "", row["url"].lower())).split("?")[0].rstrip("/")
+        parent, _, last = u.rpartition("/")
+        k = (row["site"], row["name"].lower(), parent) if parent and ID_SEG.match(last) else ("url", u)
+        if k not in best or len(row["url"]) < len(best[k]["url"]):
+            best[k] = row
+    if len(best) < len(rows):
+        seen["dropped: duplicate page (scheme, escapes, photo pages)"] = len(rows) - len(best)
+        keep = {id(r) for r in best.values()}
+        rows = [r for r in rows if id(r) in keep]
     groups = build_groups(rows)
     write_groups(groups, args.out_dir)
     n_links, n_linked = write_links(rows, groups, args.out_dir)
