@@ -1458,6 +1458,19 @@ publish `scored.tsv.gz` (every page tried, with its relevance), and
 fetched page text of older releases. site-content and page-pass both use
 it (`skip_pages_from`).
 
+**Fix 1 results (2026-11-09).** `site-content-run-10` (kept sites,
+threshold 0) plus run 9. One page pass over both (`page-pass-run-8`):
+142,590 new pages after skipping 241,043 already tried; 64,042 kept from
+1,622 sites. Combined with every earlier batch (`extract-run-15`, local
+rebuild): **105,318 hikes, 56,616 personal**. Recall on crawled personal
+pages: **37 → 42 of 118 (31% → 36%)**. Newly found: Mount Northover
+(giantsgate.com), Yellow Aster Butte (two kuresman.com reports), Medicine Bow
+Peak (adventr.co) and Carlton Peak (thirdeyemom.com). Eight more traced
+pages now get past site-content but are lost later: page type `other` (3),
+no location (3), wrong place (2). That makes extraction the next
+bottleneck for these sites, along with site verdicts and harvest coverage.
+backpacker.com is now the largest organisation site (1,588 rows).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
