@@ -1349,8 +1349,8 @@ A 50-row sample of the rebuilt table's new hikes: ~68% right (the
 `extract-run-10` sample was 72%). Misses: features resolved in the wrong
 region (Hilo's Rainbow Falls → California, Kilimanjaro → Mount Whitney),
 travel listicles ("Six Mistakes to Avoid at Lake Louise"), and American
-Alpine Club accident reports (climbing; 777 rows, left in for now).
-australianhiker.com.au was added to the exclusions. Extract releases now
+Alpine Club accident reports (climbing; 777 rows). americanalpineclub.org
+and australianhiker.com.au were added to the exclusions. Extract releases now
 also carry `links.tsv.gz`.
 
 ## Runner budget
