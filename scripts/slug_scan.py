@@ -19,6 +19,7 @@ import argparse
 import csv
 import glob
 import gzip
+import http.client
 import io
 import math
 import os
@@ -96,8 +97,19 @@ class RangeFile(io.RawIOBase):
         if n <= 0:
             return 0
         req = urllib.request.Request(self.url, headers={"Range": f"bytes={self.pos}-{self.pos + n - 1}"})
-        with self._open(req) as r:
-            data = r.read()
+        # The body can be cut off mid-transfer (IncompleteRead, reset); retry the whole range.
+        for i in range(8):
+            try:
+                with self._open(req) as r:
+                    data = r.read()
+                if len(data) == n:
+                    break
+            except (http.client.IncompleteRead, ConnectionError, TimeoutError, OSError):
+                if i == 7:
+                    raise
+            time.sleep(5 * (i + 1) * (0.5 + random.random()))
+        else:
+            raise IOError(f"short read from {self.url} at {self.pos}")
         b[:len(data)] = data
         self.pos += len(data)
         self.bytes_read += len(data)
