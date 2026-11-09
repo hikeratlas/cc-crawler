@@ -49,7 +49,9 @@ def main():
     only = None
     if args.sites:
         with open(args.sites) as f:
-            only = {ln.split("\t")[0].strip() for ln in f if ln.strip() and not ln.startswith("#")}
+            # A section entry (14ers.com/php14ers/tripreport.php) keeps its site.
+            only = {ln.split("\t")[0].strip().split("/")[0].removeprefix("www.")
+                    for ln in f if ln.strip() and not ln.startswith("#")}
     def matched(row, col):
         if row[col["slug_match"]] == "1":
             return True

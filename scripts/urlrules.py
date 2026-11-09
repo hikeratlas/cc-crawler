@@ -5,6 +5,7 @@ scripts/filter_candidates.py (to re-filter an existing candidate list).
 Each rule was checked against the hand-labelled spot-check sample
 (data/eval/spotcheck/); see docs/DESIGN.md, Stage 7.
 """
+import os
 import re
 from urllib.parse import urlsplit
 
@@ -22,10 +23,27 @@ ATTACHMENT = re.compile(r"^(img|imgp|dsc|dscn|dscf|image|photo|pic|screenshot|sc
 REASONS = ("query_string", "real_estate", "shop", "attachment")
 
 
+def _sections():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "sections.tsv")
+    if not os.path.exists(path):
+        return ()
+    with open(path) as f:
+        return tuple(ln.split("\t")[0].strip().lower() for ln in f if ln.strip() and not ln.startswith("#"))
+
+
+# Trip-report sections whose page ids are in the query string (?trip=, viewtopic.php?t=).
+SECTIONS = _sections()
+
+
+def in_section(url):
+    u = re.sub(r"^https?://(www\.)?", "", url.lower())
+    return any(u.startswith(s) for s in SECTIONS)
+
+
 def drop_reason(url, site):
     """Return why a candidate URL should be dropped, or None to keep it."""
     p = urlsplit(url)
-    if p.query:
+    if p.query and not in_section(url):
         return "query_string"
     path = p.path.lower()
     if REALTY_PATH.search(path) or REALTY_SITE.search(site.split(".")[0]):

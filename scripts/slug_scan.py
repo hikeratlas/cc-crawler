@@ -167,12 +167,18 @@ def scan(args):
         t0 = time.time()
         rf = RangeFile(BASE + path)
         pf = pq.ParquetFile(io.BufferedReader(rf, buffer_size=1 << 20))
+        # Crawls before CC-MAIN-2018-39 have no content_languages (and older
+        # ones no detected MIME type): filter on what the file has.
+        have = set(pf.schema_arrow.names)
+        use = [c for c in cols if c in have]
         for rg in range(pf.num_row_groups):
-            t = pf.read_row_group(rg, columns=cols)
+            t = pf.read_row_group(rg, columns=use)
             total += t.num_rows
-            ok = pc.and_(pc.and_(pc.equal(t["fetch_status"], 200),
-                                 pc.equal(t["content_mime_detected"], "text/html")),
-                         pc.starts_with(pc.fill_null(t["content_languages"], ""), "eng"))
+            ok = pc.equal(t["fetch_status"], 200)
+            if "content_mime_detected" in have:
+                ok = pc.and_(ok, pc.equal(t["content_mime_detected"], "text/html"))
+            if "content_languages" in have:
+                ok = pc.and_(ok, pc.starts_with(pc.fill_null(t["content_languages"], ""), "eng"))
             t = t.filter(ok)
             kept += t.num_rows
             hosts = t["url_host_name"].to_pylist()

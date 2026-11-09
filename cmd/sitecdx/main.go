@@ -9,7 +9,11 @@
 // lines whose host belongs to one of the sites.
 //
 // Sites are registered domains (example.com: matches example.com and every
-// subdomain) or hosts under a blog platform (someone.blogspot.com).
+// subdomain) or hosts under a blog platform (someone.blogspot.com). A site can
+// also be a section, host plus path prefix (14ers.com/php14ers/tripreport.php):
+// only that part of the site is read, capped by -max-blocks-per-section, for
+// trip-report forums on sites whose other pages make them look off topic
+// (data/sections.csv).
 package main
 
 import (
@@ -56,6 +60,7 @@ func main() {
 	htmlOnly := flag.Bool("html-only", true, "keep only status-200 HTML captures (text/html, application/xhtml+xml)")
 	sitesPath := flag.String("sites", "", "file of sites, one per line (first tab-separated column; header lines starting with # or 'rank' are skipped)")
 	out := flag.String("out", "out/captures.tsv.gz", "output (gzip TSV)")
+	maxSectionBlocks := flag.Int("max-blocks-per-section", 200, "cap on CDX blocks read per section (host/path entries)")
 	maxBlocks := flag.Int("max-blocks-per-site", 4, "cap on CDX blocks read per site (~3,000 captures each); larger sites get evenly spaced blocks")
 	concurrency := flag.Int("concurrency", 2, "parallel range requests (all requests also share one adaptive pacer)")
 	maxRequest := flag.Int64("max-request-bytes", 64<<20, "merge nearby blocks into requests up to this size")
@@ -66,11 +71,23 @@ func main() {
 	ccio.MinInterval = *minInterval
 
 	sites := readSites(*sitesPath)
-	siteSet := map[string]bool{} // SURT host prefix, e.g. "com,example"
+	siteSet := map[string]bool{}      // SURT host prefix, e.g. "com,example"
+	sections := map[string][]string{} // SURT host -> path prefixes, for section entries
+	whole := map[string]bool{}        // hosts listed without a path
 	for _, s := range sites {
+		if i := strings.IndexByte(s, '/'); i > 0 {
+			h := surtHost(strings.TrimPrefix(s[:i], "www."))
+			siteSet[h] = true
+			sections[h] = append(sections[h], strings.ToLower(s[i:]))
+			continue
+		}
 		siteSet[surtHost(s)] = true
+		whole[surtHost(s)] = true
 	}
-	log.Printf("%d sites", len(siteSet))
+	for h := range whole {
+		delete(sections, h) // a whole-site entry wins over its sections
+	}
+	log.Printf("%d sites (%d with sections only)", len(siteSet), len(sections))
 
 	base := fmt.Sprintf("%s/cc-index/collections/%s/indexes/", ccio.Base, *crawl)
 	blocks := loadClusterIdx(base + "cluster.idx")
@@ -79,8 +96,22 @@ func main() {
 	// Which blocks does each site need?
 	need := map[int]bool{}
 	capped := 0
+	type span struct {
+		lo, hi string
+		cap    int
+	}
+	var spans []span
 	for host := range siteSet {
-		lo, hi := host+")", host+"-" // ')' < ',' < '-': covers "host)…" and "host,sub)…"
+		if ps, ok := sections[host]; ok {
+			for _, p := range ps {
+				spans = append(spans, span{host + ")" + p, host + ")" + p + "\xff", *maxSectionBlocks})
+			}
+			continue
+		}
+		spans = append(spans, span{host + ")", host + "-", *maxBlocks}) // ')' < ',' < '-': "host)…" and "host,sub)…"
+	}
+	for _, sp := range spans {
+		lo, hi, maxB := sp.lo, sp.hi, sp.cap
 		i := sort.Search(len(blocks), func(i int) bool { return blocks[i].key > lo }) - 1
 		if i < 0 {
 			i = 0
@@ -92,11 +123,10 @@ func main() {
 		for i < len(blocks) && blocks[i].key < hi {
 			i++
 		}
-		span := i - first
-		if span > *maxBlocks {
+		if n := i - first; n > maxB {
 			capped++
-			for k := 0; k < *maxBlocks; k++ {
-				need[first + k*span / *maxBlocks] = true
+			for k := 0; k < maxB; k++ {
+				need[first+k*n/maxB] = true
 			}
 		} else {
 			for j := first; j < i; j++ {
@@ -166,7 +196,7 @@ func main() {
 				for _, line := range lines {
 					s2++
 					site, rec, ts, ok := parseLine(line, siteSet)
-					if !ok {
+					if !ok || !inSection(line, sections) {
 						continue
 					}
 					mime := rec.MimeDet
@@ -201,6 +231,37 @@ func main() {
 	must(fo.Close())
 	log.Printf("kept %d of %d CDX lines; wrote %s in %s; %d rate-limit responses",
 		kept, seen, *out, time.Since(start).Round(time.Second), ccio.SlowDowns())
+}
+
+// inSection keeps a line unless its host has section entries and its path
+// matches none of them.
+func inSection(line []byte, sections map[string][]string) bool {
+	if len(sections) == 0 {
+		return true
+	}
+	sp := bytes.IndexByte(line, ' ')
+	if sp < 0 {
+		return false
+	}
+	key := string(line[:sp])
+	paren := strings.IndexByte(key, ')')
+	if paren < 0 {
+		return false
+	}
+	host := key[:paren]
+	if c := strings.IndexByte(host, ':'); c >= 0 {
+		host = host[:c]
+	}
+	ps, ok := sections[host]
+	if !ok {
+		return true
+	}
+	for _, p := range ps {
+		if strings.HasPrefix(key[paren+1:], p) {
+			return true
+		}
+	}
+	return false
 }
 
 func readSites(path string) []string {
