@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       site_content_release:
-        description: "site-content release to take candidates from"
+        description: "site-content release(s) to take candidates from (comma-separated; URLs de-duplicated)"
         default: "site-content-run-1"
         required: true
       partitions:
@@ -41,8 +41,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ inputs.site_content_release }}" --pattern candidates.tsv.gz --dir cand
-          python3 -I scripts/page_pass.py split --candidates cand/candidates.tsv.gz \
+          for r in $(echo "${{ inputs.site_content_release }}" | tr ',' ' '); do
+            gh release download "$r" --pattern candidates.tsv.gz --dir "cand/$r"; done
+          python3 -I scripts/page_pass.py split --candidates 'cand/*/candidates.tsv.gz' \
             --partitions "${{ inputs.partitions }}" --out-dir plan
           echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.partitions }}))))")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4

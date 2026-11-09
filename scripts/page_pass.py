@@ -23,6 +23,7 @@ import glob
 import gzip
 import json
 import os
+import re
 import random
 import statistics
 import sys
@@ -45,26 +46,37 @@ def opener(path):
 
 
 def split(args):
+    """Partition candidates by site. Several site-content outputs can be given:
+    rows are written in the first file's column order and each URL once."""
     os.makedirs(args.out_dir, exist_ok=True)
     outs = [open(os.path.join(args.out_dir, f"part-{i}.tsv"), "w") for i in range(args.partitions)]
     counts = [0] * args.partitions
-    header = None
+    header, seen, dups = None, set(), 0
     for path in files(args.candidates):
         with opener(path) as f:
-            h = next(f)
+            h = next(f).rstrip("\n").split("\t")
             if header is None:
                 header = h
                 for o in outs:
-                    o.write(h)
-            col = {c: i for i, c in enumerate(h.rstrip("\n").split("\t"))}
+                    o.write("\t".join(h) + "\n")
+            col = {c: i for i, c in enumerate(h)}
+            same = h == header
             for line in f:
-                site = line.split("\t", col["site"] + 1)[col["site"]]
+                row = line.rstrip("\n").split("\t")
+                u = re.sub(r"^https?://(www\.)?", "", row[col["url"]].lower()).rstrip("/")
+                if u in seen:
+                    dups += 1
+                    continue
+                seen.add(u)
+                site = row[col["site"]]
                 k = zlib.crc32(site.encode()) % args.partitions
-                outs[k].write(line)
+                outs[k].write(line if same else "\t".join(row[col[c]] if c in col and col[c] < len(row) else ""
+                                                           for c in header) + "\n")
                 counts[k] += 1
     for o in outs:
         o.close()
-    print(f"{sum(counts):,} pages in {args.partitions} partitions (min {min(counts):,}, max {max(counts):,})")
+    print(f"{sum(counts):,} pages in {args.partitions} partitions (min {min(counts):,}, max {max(counts):,}); "
+          f"{dups:,} duplicate URLs skipped")
 
 
 def score(args):
