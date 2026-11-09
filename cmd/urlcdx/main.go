@@ -5,7 +5,7 @@
 // For each URL it computes the CDX SURT key, binary-searches each crawl's
 // cluster.idx for the one block of ~3,000 lines that would hold it, fetches
 // that block, and looks for a capture of the same page (ignoring scheme,
-// "www.", a trailing slash and the query string). Output is one row per URL
+// "www.", a trailing slash and query arguments that don't identify a page). Output is one row per URL
 // and crawl: url, crawl, found, status, mime, timestamp, captured url.
 package main
 
@@ -34,7 +34,7 @@ type block struct {
 }
 
 // surt turns a URL into the CDX key form used for lookup and comparison:
-// "com,example)/path" (lowercase, no www., no trailing slash, no query).
+// "com,example)/path?a=1" (lowercase, no www., no trailing slash; see query).
 func surt(raw string) (string, bool) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" {
@@ -47,7 +47,31 @@ func surt(raw string) (string, bool) {
 	}
 	p := strings.ToLower(u.EscapedPath())
 	p = strings.TrimRight(p, "/")
-	return strings.Join(parts, ",") + ")" + p, true
+	return strings.Join(parts, ",") + ")" + p + query(u.Query()), true
+}
+
+// query keeps the arguments that identify a page (?p=123, ?trip=9569) in a
+// canonical order and drops ones that don't (Blogger's ?m=1, ?amp=1, utm_*).
+func query(q url.Values) string {
+	var keys []string
+	for k := range q {
+		lk := strings.ToLower(k)
+		if lk == "m" || lk == "amp" || strings.HasPrefix(lk, "utm_") {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Strings(keys)
+	var b []string
+	for _, k := range keys {
+		for _, v := range q[k] {
+			b = append(b, strings.ToLower(k)+"="+strings.ToLower(v))
+		}
+	}
+	return "?" + strings.Join(b, "&")
 }
 
 func loadClusterIdx(u string) []block {
@@ -80,7 +104,11 @@ func loadClusterIdx(u string) []block {
 
 // lineKey normalises a CDX line's SURT the same way as surt().
 func lineKey(s string) string {
+	qs := ""
 	if q := strings.IndexByte(s, '?'); q >= 0 {
+		if v, err := url.ParseQuery(s[q+1:]); err == nil {
+			qs = query(v)
+		}
 		s = s[:q]
 	}
 	if i := strings.IndexByte(s, ')'); i >= 0 {
@@ -91,7 +119,7 @@ func lineKey(s string) string {
 		host = strings.TrimSuffix(host, ",www")
 		s = host + strings.TrimRight(s[i:], "/")
 	}
-	return s
+	return s + qs
 }
 
 func main() {
