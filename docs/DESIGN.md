@@ -1449,6 +1449,15 @@ harvests limited to `data/deep/kept_sites.txt` (6,437 sites kept by
 site-content runs 3–8) at threshold 0. The page pass takes both releases
 at once (`site_content_release` is comma-separated; URLs de-duplicated).
 
+Skipping by `pages.tsv.gz` was also wrong: it lists only kept pages, so
+every page a pass rejected was fetched again. The kept-sites re-filter
+(`site-content-run-10`) kept 418k URLs, but only 99k are name-only matches.
+Most of the rest had been tried and rejected before. Page passes now also
+publish `scored.tsv.gz` (every page tried, with its relevance), and
+`scripts/scored_urls.py` builds the skip list from it, or from the
+fetched page text of older releases. site-content and page-pass both use
+it (`skip_pages_from`).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the

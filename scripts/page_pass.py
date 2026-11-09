@@ -52,6 +52,13 @@ def split(args):
     outs = [open(os.path.join(args.out_dir, f"part-{i}.tsv"), "w") for i in range(args.partitions)]
     counts = [0] * args.partitions
     header, seen, dups = None, set(), 0
+    norm = lambda u: re.sub(r"^https?://(www\.)?", "", u.lower()).rstrip("/")
+    for path in args.skip_urls or []:
+        with opener(path) as f:
+            col = {c: i for i, c in enumerate(next(f).rstrip("\n").split("\t"))}
+            for line in f:
+                seen.add(norm(line.rstrip("\n").split("\t")[col["url"]]))
+    n_skip = len(seen)
     for path in files(args.candidates):
         with opener(path) as f:
             h = next(f).rstrip("\n").split("\t")
@@ -63,7 +70,7 @@ def split(args):
             same = h == header
             for line in f:
                 row = line.rstrip("\n").split("\t")
-                u = re.sub(r"^https?://(www\.)?", "", row[col["url"]].lower()).rstrip("/")
+                u = norm(row[col["url"]])
                 if u in seen:
                     dups += 1
                     continue
@@ -76,7 +83,7 @@ def split(args):
     for o in outs:
         o.close()
     print(f"{sum(counts):,} pages in {args.partitions} partitions (min {min(counts):,}, max {max(counts):,}); "
-          f"{dups:,} duplicate URLs skipped")
+          f"{dups:,} duplicate or already-scored URLs skipped ({n_skip:,} URLs in the skip lists)")
 
 
 def score(args):
@@ -90,8 +97,12 @@ def score(args):
              "warc_filename", "warc_record_offset", "warc_record_length"]
     sites = defaultdict(lambda: {"pages": 0, "fetched": 0, "kept": 0, "rel": [], "personal": []})
     n_pages = n_kept = 0
-    with gzip.open(os.path.join(args.out_dir, "pages.tsv.gz"), "wt") as out:
+    # scored.tsv.gz lists every page tried, kept or not, so later runs can skip
+    # them all (pages.tsv.gz has only the kept ones).
+    with gzip.open(os.path.join(args.out_dir, "pages.tsv.gz"), "wt") as out, \
+            gzip.open(os.path.join(args.out_dir, "scored.tsv.gz"), "wt") as sc:
         out.write("\t".join(pcols) + "\n")
+        sc.write("url\tsite\thttp_status\tp_relevant\n")
         for path in files(args.pages):
             with opener(path) as f:
                 for line in f:
@@ -101,10 +112,12 @@ def score(args):
                     s["pages"] += 1
                     n_pages += 1
                     if r.get("error") or r.get("http_status") != 200:
+                        sc.write(f"{r['url']}\t{row['site']}\t{r.get('http_status') or ''}\t\n")
                         continue
                     s["fetched"] += 1
                     p_rel = model_score(r, rel_model)
                     s["rel"].append(p_rel)
+                    sc.write(f"{r['url']}\t{row['site']}\t200\t{p_rel:.3f}\n")
                     if p_rel < args.threshold:
                         continue
                     p_per = model_score(r, kind_model) if r["words"] >= 100 else None
@@ -191,6 +204,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("split")
     s.add_argument("--candidates", nargs="+", required=True)
+    s.add_argument("--skip-urls", nargs="*", default=[], help="TSV files with a url column (scored_urls.py): leave these out")
     s.add_argument("--partitions", type=int, default=16)
     s.add_argument("--out-dir", required=True)
     c = sub.add_parser("score")

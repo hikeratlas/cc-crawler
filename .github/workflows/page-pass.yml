@@ -13,6 +13,10 @@ on:
         description: "site-content release(s) to take candidates from (comma-separated; URLs de-duplicated)"
         default: "site-content-run-1"
         required: true
+      skip_pages_from:
+        description: "Optional: page-pass releases (comma-separated) whose tried pages are left out"
+        default: ""
+        required: false
       partitions:
         description: "Fetch partitions (each site stays in one partition)"
         default: "16"
@@ -43,7 +47,13 @@ jobs:
         run: |
           for r in $(echo "${{ inputs.site_content_release }}" | tr ',' ' '); do
             gh release download "$r" --pattern candidates.tsv.gz --dir "cand/$r"; done
-          python3 -I scripts/page_pass.py split --candidates 'cand/*/candidates.tsv.gz' \
+          skip=(); if [ -n "${{ inputs.skip_pages_from }}" ]; then
+            # Every page already tried (not just the kept ones): scored.tsv.gz, or the page text of older runs.
+            for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
+              gh release download "$r" --pattern scored.tsv.gz --dir "skip/$r" 2>/dev/null \
+                || gh release download "$r" --pattern 'pages-part-*.jsonl.gz' --dir "skip/$r"; done
+            python3 -I scripts/scored_urls.py --out skip.tsv.gz 'skip/*/*.gz'; skip=(skip.tsv.gz); fi
+          python3 -I scripts/page_pass.py split --candidates 'cand/*/candidates.tsv.gz' --skip-urls "${skip[@]}" \
             --partitions "${{ inputs.partitions }}" --out-dir plan
           echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.partitions }}))))")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
@@ -117,6 +127,6 @@ jobs:
           # No --target: tagging the run's own commit fails with 403 once main has newer
           # workflow files (needs the workflows permission). See DESIGN.md.
           gh release create "$tag" --title "Page pass (run ${{ github.run_number }})" \
-            --notes "Every candidate page from ${{ inputs.site_content_release }} fetched and scored; pages kept at relevance >= ${{ inputs.threshold }}. pages.tsv.gz is the final page list; sites.tsv.gz has site_kind; page-text-*.jsonl.gz hold the fetched text. See report.md. Built from commit $GITHUB_SHA."
-          gh release upload "$tag" out/report.md out/pages.tsv.gz out/sites.tsv.gz
+            --notes "Every candidate page from ${{ inputs.site_content_release }} fetched and scored; pages kept at relevance >= ${{ inputs.threshold }}. pages.tsv.gz is the final page list; scored.tsv.gz lists every page tried; sites.tsv.gz has site_kind; page-text-*.jsonl.gz hold the fetched text. See report.md. Built from commit $GITHUB_SHA."
+          gh release upload "$tag" out/report.md out/pages.tsv.gz out/sites.tsv.gz out/scored.tsv.gz
           for f in text/*.jsonl.gz; do gh release upload "$tag" "$f"; done
