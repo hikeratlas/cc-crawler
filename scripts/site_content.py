@@ -22,6 +22,7 @@ import glob
 import gzip
 import json
 import os
+import re
 import random
 import statistics
 import sys
@@ -117,20 +118,30 @@ def score(args):
 
     n_in = n_out = 0
     out_path = os.path.join(args.out_dir, "candidates.tsv.gz")
+    # Candidates can come from several site-urls releases: write every row in
+    # the first file's column order and keep each URL once.
+    out_cols, seen_urls = None, set()
     with gzip.open(out_path, "wt") as o:
-        header_written = False
         for path in files(args.candidates):
             with gzip.open(path, "rt") as f:
-                h = next(f)
-                if not header_written:
-                    o.write(h)
-                    header_written = True
-                col = {c: i for i, c in enumerate(h.rstrip("\n").split("\t"))}
+                h = next(f).rstrip("\n").split("\t")
+                if out_cols is None:
+                    out_cols = h
+                    o.write("\t".join(out_cols) + "\n")
+                col = {c: i for i, c in enumerate(h)}
+                same = h == out_cols
                 for line in f:
                     n_in += 1
-                    if line.split("\t", col["site"] + 1)[col["site"]] in kept:
-                        o.write(line)
-                        n_out += 1
+                    row = line.rstrip("\n").split("\t")
+                    if row[col["site"]] not in kept:
+                        continue
+                    u = re.sub(r"^https?://(www\.)?", "", row[col["url"]].lower()).rstrip("/")
+                    if u in seen_urls:
+                        continue
+                    seen_urls.add(u)
+                    o.write(line if same else "\t".join(row[col[c]] if c in col and col[c] < len(row) else ""
+                                                       for c in out_cols) + "\n")
+                    n_out += 1
 
     # ---- report
     def read_csv(p):

@@ -50,6 +50,10 @@ on:
         description: "Number of parallel site partitions"
         default: "8"
         required: true
+      index_url:
+        description: "Hiker Atlas autosuggest index: slugs that name a hike or landform count as matches (empty = off)"
+        default: "https://public.hikeratlas.com/north-america.autosuggest.db"
+        required: false
       publish:
         description: "Attach outputs to a GitHub release"
         type: boolean
@@ -153,6 +157,8 @@ jobs:
       - name: Score sites
         run: |
           seeds=(); [ -f plan/seeds.tsv.gz ] && seeds=(--seeds plan/seeds.tsv.gz)
+          if [ -n "${{ inputs.index_url }}" ]; then
+            curl -fsSL --retry 5 -o index.db "${{ inputs.index_url }}"; seeds+=(--index index.db); fi
           python3 -I scripts/site_report.py score --mode "${{ inputs.mode }}" --captures 'cap/captures-*.tsv.gz' "${seeds[@]}" \
             --sites-out "out/sites-part-$PART.tsv.gz" --candidates-out "out/candidates-part-$PART.tsv.gz"
       - uses: actions/upload-artifact@v4

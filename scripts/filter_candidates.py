@@ -21,6 +21,8 @@ from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import urlrules  # noqa: E402
+import slugnames  # noqa: E402
+from site_report import slug_text  # noqa: E402
 
 
 def main():
@@ -30,6 +32,8 @@ def main():
     ap.add_argument("--all", action="store_true",
                     help="keep pages whose slug doesn't match too (candidates from site-urls posts/all mode)")
     ap.add_argument("--sites", help="keep only sites listed in this file (one per line, # comments)")
+    ap.add_argument("--index", help="Hiker Atlas autosuggest.db: rows whose URL names a hike or landform count "
+                    "as slug matches (slugnames.py), so the cap and slug filter keep them")
     ap.add_argument("--max-unmatched", type=int, default=0,
                     help="with --all: keep at most this many non-matching pages per site (0 = no cap), chosen by URL hash")
     ap.add_argument("--skip-urls", nargs="*", default=[],
@@ -46,6 +50,13 @@ def main():
     if args.sites:
         with open(args.sites) as f:
             only = {ln.split("\t")[0].strip() for ln in f if ln.strip() and not ln.startswith("#")}
+    def matched(row, col):
+        if row[col["slug_match"]] == "1":
+            return True
+        if not args.index or ("gear" in col and row[col["gear"]] == "1"):
+            return False
+        return slugnames.match(slug_text(row[col["url"]]), args.index) is not None
+
     key = lambda u: re.sub(r"^https?://(www\.)?", "", u.strip(), flags=re.I).rstrip("/").lower()
     skip = set()
     for path in args.skip_urls:
@@ -62,7 +73,7 @@ def main():
                 col = {c: i for i, c in enumerate(next(f).rstrip("\n").split("\t"))}
                 for line in f:
                     row = line.rstrip("\n").split("\t")
-                    if row[col["slug_match"]] != "1":
+                    if not matched(row, col):
                         unmatched[row[col["site"]]].append(row[col["url"]])
         allowed = set()
         for site, urls in unmatched.items():
@@ -70,10 +81,12 @@ def main():
             allowed.update(urls[:args.max_unmatched])
     os.makedirs(args.out_dir, exist_ok=True)
     why = Counter()
-    kept = total = 0
+    kept = total = named = 0
     sites = set()
     for path in sorted({p for pat in args.candidates for p in glob.glob(pat)}):
-        out = os.path.join(args.out_dir, os.path.basename(path))
+        # Several site-urls releases can share file names (candidates-part-0); keep them apart.
+        parent = os.path.basename(os.path.dirname(os.path.abspath(path)))
+        out = os.path.join(args.out_dir, f"{parent}-{os.path.basename(path)}")
         with gzip.open(path, "rt") as f, gzip.open(out, "wt") as o:
             header = next(f)
             o.write(header)
@@ -91,12 +104,17 @@ def main():
                 if skip and key(row[col["url"]]) in skip:
                     why["already_scored"] += 1
                     continue
-                if allowed is not None and row[col["slug_match"]] != "1" and row[col["url"]] not in allowed:
+                m = matched(row, col)
+                if allowed is not None and not m and row[col["url"]] not in allowed:
                     why["over_unmatched_cap"] += 1
                     continue
-                if row[col["slug_match"]] != "1" and not args.all:
+                if not m and not args.all:
                     why["no_slug_match"] += 1
                     continue
+                if m and row[col["slug_match"]] != "1":
+                    named += 1
+                    row[col["slug_match"]] = "1"
+                    line = "\t".join(row) + "\n"
                 r = urlrules.drop_reason(row[col["url"]], row[col["site"]])
                 if r:
                     why[r] += 1
@@ -105,6 +123,8 @@ def main():
                 kept += 1
                 sites.add(row[col["site"]])
     print(f"kept {kept:,} of {total:,} candidate URLs from {len(sites):,} sites")
+    if args.index:
+        print(f"  {named:,} rows matched by a hike or landform name in the URL (slugnames.py)")
     for k, v in why.most_common():
         print(f"  dropped {v:,}: {k}")
 
