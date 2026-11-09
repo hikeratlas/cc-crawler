@@ -1439,6 +1439,16 @@ cap dropped. site-content now takes several site-urls releases at once
 (comma-separated). Rows are written in one column order and de-duplicated
 by URL, so existing slug-mode harvests can be re-filtered in one run.
 
+First run (`site-content-run-9`: site-urls runs 4, 6, 9 and 10, threshold
+0.35, scored pages skipped): 158,857 rows matched only by name; 960 of 9,538
+sites kept, 102,598 URLs. Wrong for sites already kept: their best pages
+were scored before, so the 5-page sample came from leftovers and scored low.
+Only 14 of 1,488 deep personal sites passed (bobspirko.ca 0.18, kuresman.com
+0.06), and 4 of ~23 traced misses came through. Second run: the same
+harvests limited to `data/deep/kept_sites.txt` (6,437 sites kept by
+site-content runs 3–8) at threshold 0. The page pass takes both releases
+at once (`site_content_release` is comma-separated; URLs de-duplicated).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
