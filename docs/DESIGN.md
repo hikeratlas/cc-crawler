@@ -1353,6 +1353,64 @@ Alpine Club accident reports (climbing; 777 rows). americanalpineclub.org
 and australianhiker.com.au were added to the exclusions. Extract releases now
 also carry `links.tsv.gz`.
 
+## Recall on rare hikes (2026-11-09)
+
+**Question:** how much of what's written about lesser-known hikes do we
+find? Name counts can't answer it: Barbara Martin's seven Tonquin Valley
+days are in the table, filed under Lectern Peak, Surprise Point, Amethyst
+Lakes and Chrome Lake.
+
+**Test set.** `data/eval/recall/rare_hikes.tsv` lists 33 lesser-known
+hikes, one or two per state or province, each with an area box.
+`data/eval/recall/reports.tsv` holds 363 trip reports and guides found by
+web search (280 personal, 83 organisation), excluding aggregators. WordPress
+`?p=` shortlinks were resolved to permalinks.
+
+**Method.** `cmd/urlcdx` checks each URL against the 14 crawls we harvest:
+it looks up the one CDX block that would hold the URL. `scripts/recall_trace.py`
+then follows the URL through seeds, site-urls verdicts, harvested
+candidates, site-content, page pass, extraction and the hike table. A
+report counts as found when a row for it lies inside the hike's box. As a
+check, no URL that the pipeline harvested was reported missing by `urlcdx`.
+
+**Result (`extract-run-13` plus the date-archive fix), personal pages:**
+
+| stage | pages |
+|---|---:|
+| ground truth | 280 |
+| not in any of the 14 crawls | 162 (58%) |
+| in Common Crawl | 118 |
+| found, right place | **37 (31% of crawled)** |
+
+Where the 81 crawled personal pages were lost:
+
+| loss | pages | examples |
+|---|---:|---|
+| site judged off_topic / non_english / shop | 23 | climber.org, 14ers.com trip reports, zenfolio, university home pages; 8 Blogger blogs judged as the single site `blogspot.com` |
+| dropped at site-content | 18 | `/mount-northover/`, `/mount-cabot/`, `/kings_throne.html`, `/second-attempt-at-carlton-peak/`: slug has no hiking word and no state, so `slug_match = 0` (slug mode drops them; all mode's 1,000-page random cap drops most) |
+| page not in harvested captures | 16 | site harvested in 1–3 crawls but the page is only in others (sonnybou.ca: harvested in 2026-34 only; its Northover, Siyeh and Emory pages are in 2022–23); block cap samples big sites |
+| seeded, never harvested | 6 | below the slug-scan score cut-off (myoverdueadventures.com scored 20 < 50) |
+| wrong place | 6 | Top of the Giant → Marie Louise Lake; Willow Lake → Kit Carson Peak (nearby, outside the box) |
+| extraction | 10 | multi-day and long reports typed `other`, `area_guide` or `list_article` |
+
+Organisation pages: 43 of 83 crawled, 3 found, mostly lost to site
+verdicts and harvest sampling. 11 of the 33 hikes have no report found.
+
+**Fix candidates, by size:**
+
+1. **Name-aware slug match.** Count a slug as matching when it contains a
+   Hiker Atlas name (`slug_scan.load_names`). Recovers 9 of 10 sampled
+   site-content drops; adds 14% more candidates on the truth sites, with
+   noise to filter ("rock climbing", "north face", state names).
+2. **Harvest every kept site in all 14 crawls**, not just the deep
+   personal list; cap pages, not blocks.
+3. **Host-level verdicts for Blogger/WordPress blogs** found in the
+   domain graph, so one blog isn't judged as `blogspot.com`.
+4. **Forum and club trip reports:** 14ers.com, climber.org,
+   backpackinglight.com, oregonhikers.org are off_topic or sampled away
+   at site level, but their trip-report sections are what we want.
+5. Lower the slug-scan cut-off for personal-looking sites.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
