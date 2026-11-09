@@ -1353,6 +1353,18 @@ Alpine Club accident reports (climbing; 777 rows). americanalpineclub.org
 and australianhiker.com.au were added to the exclusions. Extract releases now
 also carry `links.tsv.gz`.
 
+### Batch 7 and duplicate pages (2026-11-09)
+
+Page pass 7 (the other sites, `site-content-run-8`, 210k URLs) and
+`extract-run-14` brought the table to 97,222 hikes (52,636 personal).
+dwhike.com went from 1,175 to 4,178 rows: it is a SmugMug gallery site, and
+every photo page (`/Gallery/i-AbC123`) repeats the gallery's text.
+`hikes.py` now keeps one row per page, counting http/https and %-escape
+variants once. Where the last path segment is an id (`i-AbC123`, `147`), it
+keeps one row per (site, title, parent folder). The id rule matters:
+grouping by title alone merged a blog whose every post is titled with the
+blog's name. Local rebuild: 93,086 hikes (52,471 personal); dwhike.com 583.
+
 ## Recall on rare hikes (2026-11-09)
 
 **Question:** how much of what's written about lesser-known hikes do we
