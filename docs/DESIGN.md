@@ -1592,6 +1592,31 @@ two the wrong one), Aravaipa Canyon (desertlavender), Willow Lake
 on northernontario.travel moved off: its trail's OSM centroid is just past
 the 25 km test radius, as in the local test.
 
+**One-hike pages typed "other" (2026-11-10).** 20 recall-test pages were
+lost to page type: one-hike pages the type model (trained on 300 labelled
+pages) calls `other`, `list_article` or `area_guide` by a small margin, with
+trip report + trail guide together at 0.35-0.5 ("Hiking Mount Cabot", "Mt
+Cammerer on the Appalachian Trail", "Wedgemount Lake Hike Guide").
+`extract.py` now takes the likelier hike type when p(trip_report) +
+p(trail_guide) >= 0.3, the title names a trail, peak, lake, waterfall or
+cliff the page resolved to, and the title doesn't read as many hikes, an
+area, gear, news, books/maps or a forum question ("...?"). Such records
+carry `type_rule = title_hike`.
+
+On page-pass-run-9 (local, public index): 9,493 of 395k pages change type
+(mostly `other`), and the hike table grows 50,794 -> 56,542 (+2,822 from
+personal sites). Biggest gains: hikearizona photosets (1,280), trails.com
+(1,191), 14ers.com (484), highsierratopix (308). In a sample of 60 new rows
+about 55 are real hike pages; the rest spam (a florist, an eye clinic), a
+road trip and a GPS-track aggregator. Before tightening, forum questions,
+a news thread, book and topo-map pages and an event calendar got through.
+On the recall pages with text it fixes 7 of 14 (Tonquin on
+inafarawayland, Wedgemount, Jacks River, Emory Peak, Mount Cabot, Mt
+Cammerer, Shining Rock) and changes no other recall page's type. Still
+missed: list-style titles ("6 Things to Know about the Mt. Tallac Hike"),
+titles that name only a region (Aravaipa, the Pecos), and pages whose hike
+probability is under 0.3.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
