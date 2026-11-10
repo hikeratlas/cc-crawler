@@ -18,7 +18,7 @@ import math
 import os
 import random
 import re
-from urllib.parse import unquote
+from urllib.parse import parse_qsl, unquote
 from collections import Counter, defaultdict
 
 # Pages that aren't one hike even when typed trip_report / trail_guide.
@@ -204,6 +204,16 @@ LCOLS = ["osm_id", "primary", "role", "feature", "feature_kind", "state", "group
          "site_kind", "page_type", "date", "distance_mi", "gain_ft"]
 
 
+# Query arguments that change how a page is shown, not which page it is.
+VIEW_ARGS = set("""
+m amp start f sid highlight postdays postorder view sort order tab cpgm ski parmpeak replytocom share
+fbclid gclid ref hilit jan feb mar apr may jun jul aug sep oct nov dec showcomment
+""".split())
+
+
+FORUM_TOPIC = re.compile(r"/(?:viewtopic|showthread)\.php\?")
+
+
 def url_key(u):
     """http/https, www., /index.php and a trailing slash don't make a different post."""
     u = re.sub(r"^https?://(www\.)?", "", u.strip(), flags=re.I)
@@ -316,12 +326,26 @@ def main():
     # %-escapes, counts once. Photo galleries (SmugMug's /Gallery/i-AbC123, numbered
     # pages) repeat a gallery's text on every photo page: when the last path segment
     # is an id rather than a slug, keep one row per (site, title, parent folder).
+    # The query string is kept when it names the page (forum topics
+    # viewtopic.php?t=, tripreport.php?trip=, photoset.php?ID=), minus arguments
+    # that only change the view: thread page, post anchor, filters, tracking.
     ID_SEG = re.compile(r"^(?:i-[a-z0-9]{4,12}|\d+|(?=[a-z]*\d)[a-z0-9]{5,12})(?:\.\w+)?$")
     best = {}
     for row in rows:
-        u = unquote(re.sub(r"^https?://(www\.)?", "", row["url"].lower())).split("?")[0].rstrip("/")
+        u, _, qs = unquote(re.sub(r"^https?://(www\.)?", "", row["url"].lower())).partition("?")
+        u = u.rstrip("/")
+        qargs = sorted((k, v) for k, v in parse_qsl(qs, keep_blank_values=True)
+                       if k not in VIEW_ARGS and not k.startswith("utm_"))
+        if qargs:
+            u += "?" + "&".join(f"{k}={v}" for k, v in qargs)
         parent, _, last = u.rpartition("/")
-        k = (row["site"], row["name"].lower(), parent) if parent and ID_SEG.match(last) else ("url", u)
+        if FORUM_TOPIC.search(u):
+            # Forum posts link one thread many ways (?t=, ?p= per reply): one row per title.
+            k = (row["site"], row["name"].lower(), u.split("?")[0])
+        elif parent and ID_SEG.match(last):
+            k = (row["site"], row["name"].lower(), parent)
+        else:
+            k = ("url", u)
         if k not in best or len(row["url"]) < len(best[k]["url"]):
             best[k] = row
     if len(best) < len(rows):
