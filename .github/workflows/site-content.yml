@@ -69,7 +69,7 @@ jobs:
         run: |
           for r in $(echo "${{ inputs.site_urls_release }}" | tr ',' ' '); do
             gh release download "$r" --pattern 'candidates-part-*.tsv.gz' --dir "cand/$r"; done
-          [ -n "${{ inputs.index_url }}" ] && curl -fsSL --retry 5 -o index.db "${{ inputs.index_url }}"
+          [ -n "${{ inputs.index_url }}" ] && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o index.db "${{ inputs.index_url }}"
           skip=(); if [ -n "${{ inputs.skip_pages_from }}" ]; then
             # Every page already tried (not just the kept ones): scored.tsv.gz, or the page text of older runs.
             for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
@@ -154,7 +154,7 @@ jobs:
         run: |
           for r in $(echo "${{ inputs.site_urls_release }}" | tr ',' ' '); do
             gh release download "$r" --pattern 'candidates-part-*.tsv.gz' --dir "cand/$r"; done
-          [ -n "${{ inputs.index_url }}" ] && curl -fsSL --retry 5 -o index.db "${{ inputs.index_url }}"
+          [ -n "${{ inputs.index_url }}" ] && curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o index.db "${{ inputs.index_url }}"
           skip=(); if [ -n "${{ inputs.skip_pages_from }}" ]; then
             # Every page already tried (not just the kept ones): scored.tsv.gz, or the page text of older runs.
             for r in $(echo "${{ inputs.skip_pages_from }}" | tr ',' ' '); do
@@ -182,6 +182,8 @@ jobs:
           tag="site-content-run-${{ github.run_number }}"
           # No --target: tagging the run's own commit fails with 403 once main has newer
           # workflow files (needs the workflows permission). See DESIGN.md.
-          gh release create "$tag" --title "Site content (run ${{ github.run_number }})" \
+          # A rerun of failed partitions reruns this job too: reuse the release the
+          # first attempt made and overwrite its files, so the rerun completes it.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Site content (run ${{ github.run_number }})" \
             --notes "Candidates from ${{ inputs.site_urls_release }} after URL rules; sites judged by ${{ inputs.per_site }} fetched pages each (keep if mean relevance >= ${{ inputs.site_threshold }}). See report.md. Built from commit $GITHUB_SHA."
-          gh release upload "$tag" out/report.md out/site_content.tsv.gz out/candidates.tsv.gz
+          gh release upload --clobber "$tag" out/report.md out/site_content.tsv.gz out/candidates.tsv.gz
