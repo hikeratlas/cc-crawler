@@ -1569,9 +1569,28 @@ worse, the rest neutral. Gains are mostly 14ers and forum reports.
 An ambiguity weight (a name's vote divided by 1 + ln(#features)/2, so
 "Willow Creek" counts less than "Crestone Needle") was tried and dropped:
 one more recall page, but 4,014 pages moved and 1,328 lost their location,
-many correct ones (Mount Wilson, Longs Peak, Mount Harvard). The two
-climber.org Willow Lake reports that write only "Kit Carson" and
-"Challenger" stay wrong.
+many correct ones (Mount Wilson, Longs Peak, Mount Harvard). Pages that
+write only "Kit Carson" and "Challenger" can still go wrong.
+
+Published as `extract-run-27`: page passes 3-8 re-extracted one at a time
+(`extract-run-19..23` and `-25`; `-24` and `-26` each lack partition 14 after
+a connection reset while downloading the index, fixed by `curl
+--retry-all-errors`), then combined with page-pass-run-9. Same 222,758 pages
+as `extract-run-18`:
+
+| | extract-run-18 | extract-run-27 |
+|---|---:|---:|
+| hikes | 154,482 | 157,446 |
+| personal sites | 95,098 | 97,213 |
+| with trail | 73,616 | 78,041 |
+| recall test, personal, right place | 44 / 117 | 54 / 117 |
+| recall test, wrong place | 12 | 8 |
+
+New finds: six Little Wild Horse Canyon reports (four had no location,
+two the wrong one), Aravaipa Canyon (desertlavender), Willow Lake
+(climber.org, rickcrandall), the Escarpment (seekinglost). Top of the Giant
+on northernontario.travel moved off: its trail's OSM centroid is just past
+the 25 km test radius, as in the local test.
 
 ## Runner budget
 
