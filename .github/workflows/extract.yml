@@ -94,11 +94,26 @@ jobs:
           retention-days: 30
 
   report:
-    needs: extract
+    needs: [plan, extract]
     if: ${{ !cancelled() }}   # report whichever partitions succeeded
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - name: Wait for every partition's artifact to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The artifact list lags uploads by a few seconds: extract-run-17 started this
+          # job 4 s after the last partition finished and found 15 of 16 artifacts.
+          want=$(echo '${{ needs.plan.outputs.parts }}' | jq length)
+          for i in $(seq 1 30); do
+            have=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.name | startswith("extracted-"))] | length')
+            echo "artifacts listed: $have of $want"
+            [ "$have" -ge "$want" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::only $have of $want partitions uploaded; reporting on those"
       - uses: actions/download-artifact@v4
         with:
           pattern: extracted-*
