@@ -1490,6 +1490,54 @@ matches a section's site. In a CC-MAIN-2023-40 sample, wta.org, nwhikers.net,
 trailjournals.com and clubtread.com had no captures (WTA appears to block the
 crawler); they stay listed for other crawls.
 
+**Fix 2 results (2026-11-10).**
+
+| stage | run | sites | pages / URLs |
+|---|---|---:|---:|
+| slug scans | `slug-scan-run-4..7` (2019-51, 2018-51, 2017-51, 2021-49) | | |
+| new sites picked | `scripts/pick_slug_sites.py` → `data/deep/slug2_sites.txt` | 14,956 (5,618 blog-platform) | |
+| harvest, `posts` mode, 4 old crawls | `site-urls-run-11` | 12,241 hiking/mixed | 7.36M URLs |
+| sections, `all` mode, 14 crawls | `site-urls-run-12` | 14 sections | ~102k section URLs |
+| site content (new sites, 0.35, ≤ 200 unmatched/site) | `site-content-run-11` | 2,150 kept | 236,473 |
+| site content (sections, threshold 0) | `site-content-run-12` | 47 | 159,337 |
+| page pass | `page-pass-run-9` | 2,187 (1,328 personal) | 222,758 kept |
+| extraction, combined with runs 8, 11–15 | `extract-run-16` | | |
+
+- `pick_slug_sites.py`: best score across releases ≥ 50, or ≥ 15 on blog
+  platforms; skips known, seeded and excluded sites, and country domains
+  other than .ca/.us (no language field before 2018-39). `slug_scan.py`
+  retries range reads cut off mid-transfer (2018-51 failed four shards with
+  `IncompleteRead`); `slug-scan-run-4` (2019-51) has 15 of 16 shards.
+- A random 30 of the kept new sites: about 22 enthusiast blogs
+  (nh48.wordpress.com, 900-miles.blogspot.com, heberhiking, serialhiking,
+  wyeastblog, hikingwithtj).
+- **Query-string duplicates.** `extract-run-16` gave 14ers.com, hikearizona.com,
+  highsierratopix.com, oregonhikers.org and nwhikers.net one row each:
+  `hikes.py`'s duplicate-page key dropped the query string, so every
+  `tripreport.php?trip=N` was the same page. The key now keeps query
+  arguments except view-only ones (thread page, filters, highlights,
+  tracking), and forum topics (`viewtopic.php?`, `showthread.php?`) count
+  once per (site, title), because each reply has its own `?p=` link.
+  maxtrails.com (generated "campgrounds near X trail" pages, 1,357 rows) is
+  excluded.
+- **Hike table** (local rebuild with both fixes): 105,318 → **154,482 hikes**,
+  personal 56,616 → **95,098**. 1,857 sites are new, with 36.6k rows (25.2k
+  personal: explor8ion, pahikes, bootsonthetrail, sghnh48, verndewit...).
+  Sections: hikearizona 5,098, 14ers 4,492, highsierratopix 1,979,
+  climber.org 1,298, backcountrypost 965, postholer 1,000, cascadeclimbers
+  723, oregonhikers 524, vftt 178, nwhikers 112. Watch areas: La Cloche
+  13 → 25, Killarney 19 → 31, Tonquin 12 → 15, Panorama Ridge 123 → 134.
+- **Recall** (personal reports in CC): 41 → 44 of 117 (38%). Newly found:
+  two climber.org reports (Tallac, Wheeler Peak) and virginiatrailguide's
+  North Fork Mountain. Several more now get through harvest but are lost
+  later: three climber.org Willow Lake reports and dirtinmyshoes' Little
+  Wild Horse resolve to the wrong place (a different "Willow Lake"; a
+  generic "Slot Canyon" trail), and the 14ers Medicine Bow report is typed
+  `other`. Most still-missing blogs are not in the scanned crawls' indexes
+  at all. Next candidates: disambiguating common names by the other
+  features on the page (Kit Carson Peak, Challenger Point), and fix 3
+  (every kept site across all 14 crawls).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
