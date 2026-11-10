@@ -1538,6 +1538,41 @@ crawler); they stay listed for other crawls.
   features on the page (Kit Carson Peak, Challenger Point), and fix 3
   (every kept site across all 14 crawls).
 
+**Name variants in extraction (2026-11-10).** The wrong-place reports were
+mostly names the index didn't match, not bad disambiguation: OSM has "Kit
+Carson Mountain" where climbers write "Kit Carson Peak" or "Kit Carson
+Pk.", and "Little Wild Horse Canyon Trail" where pages write "Little Wild
+Horse Canyon". `extract.py` now:
+
+- reads Pk. / Pt. / Mtn(s) as peak / point / mountain(s);
+- matches "X Mountain" as "X Peak" and back, for well-known peaks only
+  (qrank >= 1000; an obscure Rider Mountain in South Carolina matched
+  "Trail Rider Peak", a Washington Pompey Peak moved a Virginia report);
+- matches "X Canyon/Gulch/Wash/Narrows/Gorge/Coulee/Draw Trail" as "X
+  Canyon" etc. Two-word ones ("Antelope Canyon", "Deadmans Canyon") often
+  mean an unindexed canyon elsewhere, so they vote for the region with one
+  mention and no title bonus.
+
+Tested on the 87 recall-test pages with text (fetched from their WARC
+records) and on page-pass-run-9's 222,758 pages, both against the public
+index of 2026-11-10 (it changes; compare runs on one index):
+
+| | recall pages right | wrong | corpus gained | moved | lost |
+|---|---:|---:|---:|---:|---:|
+| main | 65 | 21 | | | |
+| this change | 75 | 12 | 1,554 | 1,296 | 119 |
+
+Of 40 sampled moves about 15 are clearly better (14ers "No Name" → Jagged
+Mountain, The Wave → Coyote Buttes, Mount Sheridan → Colorado), about 5
+worse, the rest neutral. Gains are mostly 14ers and forum reports.
+
+An ambiguity weight (a name's vote divided by 1 + ln(#features)/2, so
+"Willow Creek" counts less than "Crestone Needle") was tried and dropped:
+one more recall page, but 4,014 pages moved and 1,328 lost their location,
+many correct ones (Mount Wilson, Longs Peak, Mount Harvard). The two
+climber.org Willow Lake reports that write only "Kit Carson" and
+"Challenger" stay wrong.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
