@@ -57,8 +57,8 @@ jobs:
       - name: Download index and file list
         run: |
           mkdir -p in out
-          curl -fsSL --retry 5 -o in/index.db "${{ inputs.index_url }}"
-          curl -fsSL --retry 5 -o in/paths.gz "https://data.commoncrawl.org/crawl-data/${{ inputs.crawl }}/cc-index-table.paths.gz"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o in/index.db "${{ inputs.index_url }}"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o in/paths.gz "https://data.commoncrawl.org/crawl-data/${{ inputs.crawl }}/cc-index-table.paths.gz"
       - name: Scan
         run: |
           python3 scripts/slug_scan.py scan --paths in/paths.gz --part "${{ matrix.part }}" --parts "${{ inputs.parts }}" \

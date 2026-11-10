@@ -75,7 +75,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p in out
-          curl -fsSL --retry 5 -o in/index.db "${{ inputs.index_url }}"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o in/index.db "${{ inputs.index_url }}"
           if [ -n "${{ inputs.page_pass_run_id }}" ]; then
             gh run download "${{ inputs.page_pass_run_id }}" -R "$GITHUB_REPOSITORY" -n "page-text-${{ matrix.part }}" -D in
             gh run download "${{ inputs.page_pass_run_id }}" -R "$GITHUB_REPOSITORY" -n page-pass-report -D in
@@ -160,6 +160,8 @@ jobs:
           tag="extract-run-${{ github.run_number }}"
           # No --target: tagging the run's own commit fails with 403 once main has newer
           # workflow files (needs the workflows permission). See DESIGN.md.
-          gh release create "$tag" --title "Extraction (run ${{ github.run_number }})" \
+          # A rerun of failed partitions reruns this job too: reuse the release the
+          # first attempt made and overwrite its files, so the rerun completes it.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Extraction (run ${{ github.run_number }})" \
             --notes "First extraction pass over ${{ inputs.page_pass_release }}: page type, OSM features resolved to one region, distance, gain and date per kept page. extracted-*.jsonl.gz hold one JSON record per page; hikes.tsv.gz has one row per trip report or trail guide; hike_groups.tsv.gz groups them by destination or trail; links.tsv.gz has one row per (OSM feature, page) link. See report.md and hikes_report.md. Built from commit $GITHUB_SHA."
-          gh release upload "$tag" report.md hikes/hikes_report.md hikes/hikes.tsv.gz hikes/hike_groups.tsv.gz hikes/links.tsv.gz out/*.jsonl.gz
+          gh release upload --clobber "$tag" report.md hikes/hikes_report.md hikes/hikes.tsv.gz hikes/hike_groups.tsv.gz hikes/links.tsv.gz out/*.jsonl.gz

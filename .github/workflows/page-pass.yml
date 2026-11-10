@@ -140,7 +140,9 @@ jobs:
           tag="page-pass-run-${{ github.run_number }}"
           # No --target: tagging the run's own commit fails with 403 once main has newer
           # workflow files (needs the workflows permission). See DESIGN.md.
-          gh release create "$tag" --title "Page pass (run ${{ github.run_number }})" \
+          # A rerun of failed partitions reruns this job too: reuse the release the
+          # first attempt made and overwrite its files, so the rerun completes it.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Page pass (run ${{ github.run_number }})" \
             --notes "Every candidate page from ${{ inputs.site_content_release }} fetched and scored; pages kept at relevance >= ${{ inputs.threshold }}. pages.tsv.gz is the final page list; scored.tsv.gz lists every page tried; sites.tsv.gz has site_kind; page-text-*.jsonl.gz hold the fetched text. See report.md. Built from commit $GITHUB_SHA."
-          gh release upload "$tag" out/report.md out/pages.tsv.gz out/sites.tsv.gz out/scored.tsv.gz
-          for f in text/*.jsonl.gz; do gh release upload "$tag" "$f"; done
+          gh release upload --clobber "$tag" out/report.md out/pages.tsv.gz out/sites.tsv.gz out/scored.tsv.gz
+          for f in text/*.jsonl.gz; do gh release upload --clobber "$tag" "$f"; done
