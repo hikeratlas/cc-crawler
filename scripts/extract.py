@@ -170,10 +170,10 @@ def aliases(kind, toks, qrank=0):
         # OSM's "Kit Carson Mountain" is the climbers' "Kit Carson Peak", and
         # the other way round. Only for names with a distinguishing word, so
         # "Bald Mountain" doesn't become every "Bald Peak".
-        # Well-known peaks only: an obscure "Rider Mountain" in South Carolina
+        # Well-known peaks only (qrank >= 1000): an obscure "Rider Mountain" in South Carolina
         # must not match "Trail Rider Peak" in Colorado.
         base = toks[:-1]
-        if toks[-1] in ("mountain", "peak") and any(t not in GENERIC for t in base) and qrank >= 100:
+        if toks[-1] in ("mountain", "peak") and any(t not in GENERIC for t in base) and qrank >= 1000:
             out.append(" ".join(base + ["peak" if toks[-1] == "mountain" else "mountain"]))
     if kind in ("trail", "hike") and len(toks) >= 3 and toks[-1] == "trail" and toks[-2] in CANYONISH:
         # "Little Wild Horse Canyon Trail" is written "Little Wild Horse Canyon".
