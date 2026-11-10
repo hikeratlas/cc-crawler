@@ -523,6 +523,16 @@ def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
     # Page type from the trained model (scripts/page_type.py); the old rules
     # (rule_type) are kept for comparison.
     ptype, probs = type_model.predict(TYPE_MODEL, type_model.features(title, text, rec["url"], len(feats)))
+    # The model, trained on 300 pages, often calls a one-hike page "other",
+    # a list or an area guide by a small margin ("Hiking Mount Cabot", "Mt
+    # Cammerer on the Appalachian Trail"). When the title names a feature the
+    # page resolved to and the two hike types together are likely enough,
+    # take the likelier of them.
+    hike_p = probs["trip_report"] + probs["trail_guide"]
+    if (ptype not in HIKE_TYPES and hike_p >= TITLE_HIKE_P and not NOT_ONE_HIKE.search(title)
+            and any(k in title_keys and f["kind"] in TITLE_HIKE_KINDS for k, f in kept)):
+        ptype = max(HIKE_TYPES, key=probs.get)
+        rec["type_rule"] = "title_hike"
     rec["page_type"] = ptype
     rec["page_type_p"] = round(probs[ptype], 3)
     rec["rule_type"] = page_type(title, text, len(feats))
@@ -532,6 +542,15 @@ def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
 
 
 HIKE_TYPES = ("trip_report", "trail_guide")
+TITLE_HIKE_P = 0.3
+TITLE_HIKE_KINDS = {"trail", "hike", "peak", "lake", "waterfall", "cliff"}
+# Titles about many hikes or a whole area, even when they name one feature.
+NOT_ONE_HIKE = re.compile(r"(^\s*\d{1,2}\s)|\b(best|top \d+|\d{1,2} (?:best|great|easy|amazing|epic|awesome|"
+                          r"favorite|beautiful|scenic|hikes|trails|waterfalls|things|ways|reasons|tips|days)|"
+                          r"hikes|trails (?:in|near|of|around)|things to do|where to stay|itinerary|"
+                          r"days? in|weekend in|camping|campgrounds?|review|gear|news|events?|calendar|books?|guidebooks?|"
+                          r"maps?|topo|free photos|shot|killed|rescued?|missing|for sale)\b"
+                          r"|\?(?:\s|$)", re.I)   # forum questions: "Onion Valley to Mount Gould?"
 PARK_SUFFIX = re.compile(r"\s*(?:(?:state|provincial|national|regional|county|city)\s+)?"
                          r"(?:park|forest|preserve|recreation area|natural area|conservation area|"
                          r"public reserved land|sanctuary|reserve|wildlife area)$")
