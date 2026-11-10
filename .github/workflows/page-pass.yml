@@ -97,11 +97,25 @@ jobs:
           retention-days: 30
 
   score:
-    needs: fetch
+    needs: [plan, fetch]
     if: ${{ !cancelled() }}   # score whichever partitions succeeded
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - name: Wait for every partition's artifact to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The artifact list lags uploads by a few seconds (extract-run-17 lost a partition).
+          want=$(echo '${{ needs.plan.outputs.parts }}' | jq length)
+          for i in $(seq 1 30); do
+            have=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.name | startswith("page-text-"))] | length')
+            echo "artifacts listed: $have of $want"
+            [ "$have" -ge "$want" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::only $have of $want partitions uploaded; scoring those"
       - uses: actions/download-artifact@v4
         with:
           pattern: page-text-*
