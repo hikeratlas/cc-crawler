@@ -95,6 +95,11 @@ LOWER_OK = {"of", "the", "and", "de", "du", "la", "le", "des", "on", "at", "in",
 def norm(name):
     s = re.sub(r"[’']", "", name.lower())  # "Angel's Landing" == "Angels Landing"
     s = re.sub(r"\bmt\.?\b", "mount", s)
+    # Trip-report shorthand: "Kit Carson Pk.", "Challenger Pt.", "Hayden Mtn"
+    s = re.sub(r"\bpk\b\.?", "peak", s)
+    s = re.sub(r"\bpt\b\.?", "point", s)
+    s = re.sub(r"\bmtns\b\.?", "mountains", s)
+    s = re.sub(r"\bmtn\b\.?", "mountain", s)
     s = re.sub(r"\bst\.?\b", "saint", s)
     s = re.sub(r"[^a-z0-9 ]+", " ", s)
     return " ".join(s.split())
@@ -131,17 +136,29 @@ def load_index(path):
             if len(toks) == 1:
                 continue
         names[key].append(f)
-        pending += [(alias, f) for alias in aliases(kind, toks)]
+        pending += [(alias, f) for alias in aliases(kind, toks, qrank or 0)]
         if kind == "park" and len(toks) >= 2:
             parks[key] = name
     real = set(names)
     for alias, f in pending:
         if alias not in real:
             names[alias].append(f)
+            if f["kind"] in ("trail", "hike") and len(alias.split()) <= 2:
+                WEAK_ALIASES.add(alias)
     return names, parks, long_trails(names)
 
 
-def aliases(kind, toks):
+CANYONISH = {"canyon", "gulch", "wash", "narrows", "gorge", "coulee", "draw"}
+
+
+# Trail aliases ("Little Wild Horse Canyon" for "... Canyon Trail") name the
+# canyon too, which may be a different, unindexed place ("Antelope Canyon"):
+# short ones vote for a page's region with one mention, title or not. Longer
+# ones ("Little Wild Horse Canyon") are specific enough to vote in full.
+WEAK_ALIASES = set()
+
+
+def aliases(kind, toks, qrank=0):
     """Other spellings of a name: OSM's "Yonah Mountain" is usually written
     "Mount Yonah", and "Lower Yosemite Fall" as "Lower Yosemite Falls"."""
     out = []
@@ -150,6 +167,18 @@ def aliases(kind, toks):
             out.append(" ".join(toks[1:] + ["mountain"]))
         elif toks[-1] == "mountain":
             out.append(" ".join(["mount"] + toks[:-1]))
+        # OSM's "Kit Carson Mountain" is the climbers' "Kit Carson Peak", and
+        # the other way round. Only for names with a distinguishing word, so
+        # "Bald Mountain" doesn't become every "Bald Peak".
+        # Well-known peaks only (qrank >= 1000): an obscure "Rider Mountain" in South Carolina
+        # must not match "Trail Rider Peak" in Colorado.
+        base = toks[:-1]
+        if toks[-1] in ("mountain", "peak") and any(t not in GENERIC for t in base) and qrank >= 1000:
+            out.append(" ".join(base + ["peak" if toks[-1] == "mountain" else "mountain"]))
+    if kind in ("trail", "hike") and len(toks) >= 3 and toks[-1] == "trail" and toks[-2] in CANYONISH:
+        # "Little Wild Horse Canyon Trail" is written "Little Wild Horse Canyon".
+        if any(t not in GENERIC for t in toks[:-2]):
+            out.append(" ".join(toks[:-1]))
     if kind == "waterfall" and toks[-1] == "fall":
         out.append(" ".join(toks[:-1] + ["falls"]))
     return [a for a in out if a not in STOP_NAMES]
@@ -473,7 +502,8 @@ def finish(rec, found, ctx_states, title, text, names, parks, long, boiler=()):
     ctx_parks = {k for k in found if k in parks}
     # Votes for the region: mentions, plus 3 for a name in the title, so
     # the title's own lake beats a lake mentioned in passing.
-    local = Counter({k: v + (3 if k in title_keys else 0) for k, v in found.items() if k not in long})
+    local = Counter({k: 1 if k in WEAK_ALIASES else v + (3 if k in title_keys else 0)
+                     for k, v in found.items() if k not in long})
     kept, centre = resolve(local, names, ctx_states, ctx_parks)
     feats = [feature(f, found[k]) for k, f in kept]
     if kept or ctx_states:
