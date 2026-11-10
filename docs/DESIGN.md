@@ -1520,7 +1520,7 @@ crawler); they stay listed for other crawls.
   once per (site, title), because each reply has its own `?p=` link.
   maxtrails.com (generated "campgrounds near X trail" pages, 1,357 rows) is
   excluded.
-- **Hike table** (local rebuild with both fixes): 105,318 → **154,482 hikes**,
+- **Hike table** (`extract-run-18`, both fixes; run 17 lost a partition to the artifact-list race, now fixed): 105,318 → **154,482 hikes**,
   personal 56,616 → **95,098**. 1,857 sites are new, with 36.6k rows (25.2k
   personal: explor8ion, pahikes, bootsonthetrail, sghnh48, verndewit...).
   Sections: hikearizona 5,098, 14ers 4,492, highsierratopix 1,979,
