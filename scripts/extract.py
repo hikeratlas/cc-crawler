@@ -95,6 +95,11 @@ LOWER_OK = {"of", "the", "and", "de", "du", "la", "le", "des", "on", "at", "in",
 def norm(name):
     s = re.sub(r"[’']", "", name.lower())  # "Angel's Landing" == "Angels Landing"
     s = re.sub(r"\bmt\.?\b", "mount", s)
+    # Trip-report shorthand: "Kit Carson Pk.", "Challenger Pt.", "Hayden Mtn"
+    s = re.sub(r"\bpk\b\.?", "peak", s)
+    s = re.sub(r"\bpt\b\.?", "point", s)
+    s = re.sub(r"\bmtns\b\.?", "mountains", s)
+    s = re.sub(r"\bmtn\b\.?", "mountain", s)
     s = re.sub(r"\bst\.?\b", "saint", s)
     s = re.sub(r"[^a-z0-9 ]+", " ", s)
     return " ".join(s.split())
@@ -141,6 +146,9 @@ def load_index(path):
     return names, parks, long_trails(names)
 
 
+CANYONISH = {"canyon", "gulch", "wash", "narrows", "gorge", "coulee", "draw"}
+
+
 def aliases(kind, toks):
     """Other spellings of a name: OSM's "Yonah Mountain" is usually written
     "Mount Yonah", and "Lower Yosemite Fall" as "Lower Yosemite Falls"."""
@@ -150,6 +158,16 @@ def aliases(kind, toks):
             out.append(" ".join(toks[1:] + ["mountain"]))
         elif toks[-1] == "mountain":
             out.append(" ".join(["mount"] + toks[:-1]))
+        # OSM's "Kit Carson Mountain" is the climbers' "Kit Carson Peak", and
+        # the other way round. Only for names with a distinguishing word, so
+        # "Bald Mountain" doesn't become every "Bald Peak".
+        base = toks[:-1]
+        if toks[-1] in ("mountain", "peak") and any(t not in GENERIC for t in base):
+            out.append(" ".join(base + ["peak" if toks[-1] == "mountain" else "mountain"]))
+    if kind in ("trail", "hike") and len(toks) >= 3 and toks[-1] == "trail" and toks[-2] in CANYONISH:
+        # "Little Wild Horse Canyon Trail" is written "Little Wild Horse Canyon".
+        if any(t not in GENERIC for t in toks[:-2]):
+            out.append(" ".join(toks[:-1]))
     if kind == "waterfall" and toks[-1] == "fall":
         out.append(" ".join(toks[:-1] + ["falls"]))
     return [a for a in out if a not in STOP_NAMES]
@@ -250,8 +268,11 @@ def resolve(found, names, ctx_states, ctx_parks, radius_km=100, max_cands=25):
 
     cands = {}
     for key in found:
+        # A name shared by many features ("Willow Creek": dozens) says little
+        # about where the page is; a unique one ("Crestone Needle") says a lot.
+        amb = 1.0 / (1.0 + 0.5 * math.log(len(names[key])))
         cs = sorted(names[key], key=lambda f: (-weight(f), -f["qrank"]))[:max_cands]
-        cands[key] = [(f, weight(f), (f["lat"], f["lon"])) for f in cs]
+        cands[key] = [(f, weight(f) * amb, (f["lat"], f["lon"])) for f in cs]
     if not cands:
         return [], None
     centres = list(dict.fromkeys(p for cs in cands.values() for _, _, p in cs))
