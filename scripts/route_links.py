@@ -41,7 +41,7 @@ import sys
 from collections import Counter, defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from extract import norm  # noqa: E402
+from extract import GENERIC, norm  # noqa: E402
 
 csv.field_size_limit(1 << 30)
 
@@ -52,6 +52,9 @@ csv.field_size_limit(1 << 30)
 DEST_NEAR_M = {"lake": 8000, "camp": 3000, "default": 800}
 # A feature the page mentions is "along" the route when this close to its line.
 ALONG_M = 300
+# A page found by a local trail's name counts as on the route when it, or a
+# place it mentions, is this close to the route's line.
+NEAR_ROUTE_M = 5000
 # Feature kinds that say nothing about the way up.
 NOT_WAYPOINT = {"park"}
 
@@ -376,6 +379,14 @@ def main():
             ratio = min((km / x for x in (rt["km"], rt["one_way_km"]) if x), key=lambda r: abs(math.log(r)))
         return {"along": sorted(set(along)), "via": via, "trailhead": trailhead, "ratio": ratio}
 
+    def near_route(rt, u):
+        """The page is about somewhere near this route: its location, or a
+        place it mentions, within NEAR_ROUTE_M of the line."""
+        p = pages[u]
+        pts = [(float(p["lon"]), float(p["lat"]))] if p.get("lat") and p.get("lon") else []
+        pts += [(f["lon"], f["lat"]) for f in pfeat.get(u, []) if f.get("lat") is not None and f.get("kind") != "park"]
+        return any(to_line_m(q, rt["line"]) <= NEAR_ROUTE_M for q in pts)
+
     def strength(ev):
         # A distance far from the route's (round trip or one way) says the
         # page took another route, or a longer trip through this one.
@@ -391,11 +402,23 @@ def main():
         for u in urls:
             ev = evidence(rt, u, dids)
             if u in by_name[i]:
-                # Found by the route's name ("Appalachian Trail", "Colorado
-                # Trail"): a long trail's pages are mostly elsewhere, so the
-                # page must mention a place along this route's line.
-                if ev["along"] and strength(ev):
-                    rows.append((i, u, "route", ev))
+                # Found by the route's name ("Appalachian Trail", "La Cloche
+                # Silhouette Trail"). A long trail's pages are mostly
+                # elsewhere, so they must mention a place along this route's
+                # line. A trail of one park's (La Cloche) is the same trail
+                # wherever the page is in that park: near the line will do.
+                # A page whose length doesn't fit (a day hike to Silver Peak
+                # on a 72 km route) is about the trail, not this trip.
+                # Only for a route that follows a named OSM trail (not one
+                # found by its title, "Bright Angel from Plateau Point
+                # Trailhead"), with a name that isn't generic ("Shelter
+                # Trail") or a long trail's.
+                tk = trail_key(rt["name"])
+                local = bool(tk) and tk not in long_trails and any(t not in GENERIC for t in tk.split())
+                if not (ev["along"] or (local and near_route(rt, u))):
+                    continue
+                fits = not ev["ratio"] or 0.5 <= ev["ratio"] <= 2.0
+                rows.append((i, u, "route" if fits else "destination", ev))
             else:
                 by_page_dest[(u, frozenset(dids))].append((i, ev))
 

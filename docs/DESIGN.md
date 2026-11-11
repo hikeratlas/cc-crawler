@@ -1700,6 +1700,20 @@ spring destination has an id; 25,750 of 35,392 hikes a trailhead id):
 70,448 links, 18,281 route-specific; 4,094 day hikes with a destination
 that has pages (4,061 by name alone).
 
+**Pages found by a local trail's name (2026-11-11).** La Cloche Silhouette
+Trail had one link of 20 pages naming it: a page found only by a route's name
+had to mention a place within 300 m of the route's line (so Appalachian Trail
+pages from Maine don't join a Georgia segment), and a Silver Peak day hike
+failed the length check on the 72 km route. Now, for a route that follows a
+named OSM trail whose name is neither generic ("Shelter Trail") nor a long
+trail's, a page anywhere within 5 km of the line counts, and one whose length
+doesn't fit becomes an `about` link instead of being dropped. Routes found
+only by their title ("Bright Angel from Plateau Point Trailhead") keep the
+strict rule. La Cloche: 12 route links and 8 about. Overall, on routes
+bundle 42965334081: route-specific links 18,280 -> 30,403, routes with
+something to show 6,139 -> 8,501; about 22 of 30 sampled new links right
+(the misses name the trail in passing: an FAQ page, a rock-climbing page).
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
