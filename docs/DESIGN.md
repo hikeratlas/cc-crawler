@@ -1914,3 +1914,21 @@ src/                    ← pipeline code (language TBD; likely Python + DuckDB,
 | 2026-11-08 | Slug-scan sites are a second batch through Stages 4–9; batches combine at the hike table. Non-hiking sites the score can't catch are excluded by hand in `hikes.py`. |
 | 2026-11-08 | The hike table keeps **authentic, human-written sites only**: aggregators, trail databases, generated directories and content farms are excluded by hand (`data/excluded_sites.csv`). |
 | 2026-11-08 | Runner budget: free plan, 20 concurrent jobs shared with other repos. Matrix caps ≤ 6 and one heavy cc-crawler run at a time. |
+
+### Mentions: a popularity signal for routes (2026-11-11)
+
+hikeratlas/basemap#281: a curated route's popularity came from its
+destination's QRank, which is near zero for most trails, passes and small
+lakes (no Wikidata item), so routes ranked obscure scrambles to well-known
+peaks above Johnston Canyon and left out Larch Valley. `scripts/mentions.py`
+counts, for each OSM id in the hike table's destination_osm_ids and
+trail_osm_ids, the distinct sites with a page about it, with its name, kind
+and position from route_features.jsonl.gz. Route keys (pages matched to the
+routes themselves) are left out, so the routes' own picks don't feed back
+into their score. basemap's routes build runs it on the route-inputs release
+before curating and hands the result to routes (`--mentions`).
+
+From route-inputs-run-3: 38,791 places, 6,705 with 5+ sites. Around Banff:
+Johnston Canyon Trail 118 sites, Moraine Lake 92, Lake Agnes 48, Sulphur
+Mountain 35, Larch Valley Trail 10, Consolation Lakes 10; the routes' top
+picks there had 0-4 (Cirrus Mountain 1, Upper Michele Lake 0).
