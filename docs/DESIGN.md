@@ -1714,6 +1714,19 @@ bundle 42965334081: route-specific links 18,280 -> 30,403, routes with
 something to show 6,139 -> 8,501; about 22 of 30 sampled new links right
 (the misses name the trail in passing: an FAQ page, a rock-climbing page).
 
+**Fix 3 harvest (2026-11-11).** site-urls-run-13 (posts mode, 14 crawls, 2
+blocks per site) over `redo_sites.txt` returned 39.1M candidate rows; one
+partition's 2.27M rows held 260k unique URLs with a hiking word and 204k that
+name a Hiker Atlas place, mostly junk: newspapers, directories and
+attorneys' listings whose URLs name streets ("Willow St", "Old Town").
+Neither the slug filter nor site-urls' verdicts separate them. So the sites
+are split: `redo_kept.txt` (4,442 sites a page pass already kept: vetted,
+and re-judging them samples leftovers and scores low) and `redo_other.txt`
+(12,197, judged by site-content as usual). `filter_candidates.py` gains
+`--names-only` (only URLs naming a Hiker Atlas place) and `--max-per-site`
+(by URL hash), both site-content inputs. Part 1, kept sites, names only, at
+most 50 per site: ~95k URLs before leaving out pages already tried.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just

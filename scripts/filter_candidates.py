@@ -34,6 +34,12 @@ def main():
     ap.add_argument("--sites", help="keep only sites listed in this file (one per line, # comments)")
     ap.add_argument("--index", help="Hiker Atlas autosuggest.db: rows whose URL names a hike or landform count "
                     "as slug matches (slugnames.py), so the cap and slug filter keep them")
+    ap.add_argument("--names-only", action="store_true",
+                    help="with --index: keep only rows whose URL names a Hiker Atlas hike or landform "
+                         "(not just a hiking word): a big harvest's most precise part (DESIGN.md, fix 3)")
+    ap.add_argument("--max-per-site", type=int, default=0,
+                    help="keep at most this many pages per site (0 = no cap), chosen by URL hash, so one big "
+                         "site (a newspaper whose URLs name streets) can't swamp the page pass")
     ap.add_argument("--max-unmatched", type=int, default=0,
                     help="with --all: keep at most this many non-matching pages per site (0 = no cap), chosen by URL hash")
     ap.add_argument("--skip-urls", nargs="*", default=[],
@@ -42,6 +48,8 @@ def main():
                                                       "excluded_sites.csv"),
                     help="sites never kept (data/excluded_sites.csv)")
     args = ap.parse_args()
+    if args.names_only and not args.index:
+        ap.error("--names-only needs --index")
     excluded = set()
     if args.exclude and os.path.exists(args.exclude):
         with open(args.exclude, newline="") as f:
@@ -53,6 +61,10 @@ def main():
             only = {ln.split("\t")[0].strip().split("/")[0].removeprefix("www.")
                     for ln in f if ln.strip() and not ln.startswith("#")}
     def matched(row, col):
+        if args.names_only:
+            if "gear" in col and row[col["gear"]] == "1":
+                return False
+            return slugnames.match(slug_text(row[col["url"]]), args.index) is not None
         if row[col["slug_match"]] == "1":
             return True
         if not args.index or ("gear" in col and row[col["gear"]] == "1"):
@@ -81,6 +93,24 @@ def main():
         for site, urls in unmatched.items():
             urls.sort(key=lambda u: hashlib.md5(u.encode()).hexdigest())
             allowed.update(urls[:args.max_unmatched])
+    # Per-site cap on every page kept, ranked by URL hash like the above.
+    capped = None
+    if args.max_per_site:
+        per_site = defaultdict(set)
+        for path in sorted({p for pat in args.candidates for p in glob.glob(pat)}):
+            with gzip.open(path, "rt") as f:
+                col = {c: i for i, c in enumerate(next(f).rstrip("\n").split("\t"))}
+                for line in f:
+                    row = line.rstrip("\n").split("\t")
+                    if only is not None and row[col["site"]] not in only:
+                        continue
+                    if skip and key(row[col["url"]]) in skip:
+                        continue
+                    if matched(row, col) or args.all:
+                        per_site[row[col["site"]]].add(row[col["url"]])
+        capped = set()
+        for site, urls in per_site.items():
+            capped.update(sorted(urls, key=lambda u: hashlib.md5(u.encode()).hexdigest())[:args.max_per_site])
     os.makedirs(args.out_dir, exist_ok=True)
     why = Counter()
     kept = total = named = 0
@@ -110,8 +140,11 @@ def main():
                 if allowed is not None and not m and row[col["url"]] not in allowed:
                     why["over_unmatched_cap"] += 1
                     continue
-                if not m and not args.all:
-                    why["no_slug_match"] += 1
+                if not m and (args.names_only or not args.all):
+                    why["no_name_in_url" if args.names_only else "no_slug_match"] += 1
+                    continue
+                if capped is not None and row[col["url"]] not in capped:
+                    why["over_site_cap"] += 1
                     continue
                 if m and row[col["slug_match"]] != "1":
                     named += 1
