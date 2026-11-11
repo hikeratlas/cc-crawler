@@ -1692,6 +1692,14 @@ matches: the same place can be two OSM features (Panorama Ridge is a
 viewpoint node in routes and a peak in the place index). Trail ways keep
 names only (their ids are in debug tiles only).
 
+An id match must still be within the name-match distance: by id alone,
+every page naming Lake Superior or Lake Tahoe joined every route ending on
+their shores (+26,000 links, nearly all wrong). With routes#153 built
+(routes bundle 42952774778, every peak, lake, viewpoint, waterfall, hut and
+spring destination has an id; 25,750 of 35,392 hikes a trailhead id):
+70,448 links, 18,281 route-specific; 4,094 day hikes with a destination
+that has pages (4,061 by name alone).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
