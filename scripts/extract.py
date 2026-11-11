@@ -158,6 +158,18 @@ CANYONISH = {"canyon", "gulch", "wash", "narrows", "gorge", "coulee", "draw"}
 WEAK_ALIASES = set()
 
 
+def _trail_aliases():
+    """data/gazetteer/trail_aliases.txt: trail names also matched without the
+    trailing "Trail" ("Top of the Giant" for the Top of the Giant Trail)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "gazetteer", "trail_aliases.txt")
+    if not os.path.exists(p):
+        return set()
+    return {norm(ln.split("#")[0].strip()) for ln in open(p) if ln.split("#")[0].strip()}
+
+
+TRAIL_ALIASES = _trail_aliases()
+
+
 def aliases(kind, toks, qrank=0):
     """Other spellings of a name: OSM's "Yonah Mountain" is usually written
     "Mount Yonah", and "Lower Yosemite Fall" as "Lower Yosemite Falls"."""
@@ -179,6 +191,11 @@ def aliases(kind, toks, qrank=0):
         # "Little Wild Horse Canyon Trail" is written "Little Wild Horse Canyon".
         if any(t not in GENERIC for t in toks[:-2]):
             out.append(" ".join(toks[:-1]))
+    # Trails whose name people write without "Trail", from the hike table
+    # (trail_aliases.txt): not every trail, or "Santa Fe Trail", "Rock Garden
+    # Trail" would match every mention of Santa Fe or a rock garden.
+    if kind in ("trail", "hike") and len(toks) >= 3 and toks[-1] == "trail" and " ".join(toks[:-1]) in TRAIL_ALIASES:
+        out.append(" ".join(toks[:-1]))
     if kind == "waterfall" and toks[-1] == "fall":
         out.append(" ".join(toks[:-1] + ["falls"]))
     return [a for a in out if a not in STOP_NAMES]

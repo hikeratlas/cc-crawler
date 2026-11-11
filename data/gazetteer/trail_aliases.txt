@@ -1,0 +1,440 @@
+# Trail names extraction also matches without the trailing "Trail": "Top of the Giant" for the Top of the Giant Trail.
+# From extract-run-39's hike groups: trails with 3+ sites whose name ends in "Trail", minus those whose base is already
+# another feature's name, kept when page text (page-pass-run-9, a quarter) writes the full "X Trail" at least 30% of the
+# time the base appears (fewer than 5 mentions: bases of 3+ words only), so phrases like "santa fe", "john wayne" and
+# "rock garden" stay out. Also the trail names in stopword_names.txt. Two-word aliases are weak votes (extract.py).
+# Dropped by hand as generic phrases: deep gap, ghost town, shared use, trans canada (the highway).
+tahoe rim	# 1249 full, 34 bare
+south kaibab	# 101 full, 90 bare
+superior hiking	# 226 full, 8 bare
+north kaibab	# 40 full, 13 bare
+alum cave	# 38 full, 77 bare
+queens garden	# 44 full, 38 bare
+trans catalina	# 40 full, 48 bare
+oregon coast	# 382 full, 471 bare
+art loeb	# 51 full, 20 bare
+northville placid	# 90 full, 2 bare
+navajo loop	# 12 full, 28 bare
+hoh river	# 24 full, 44 bare
+devils bridge	# 49 full, 37 bare
+lost mine	# 23 full, 10 bare
+grinnell glacier	# 78 full, 156 bare
+grand enchantment	# 58 full, 1 bare
+fairyland loop	# 9 full, 11 bare
+cohab canyon	# 6 full, 6 bare
+benton mackaye	# 60 full, 31 bare
+skyline to the sea	# 52 full, 8 bare
+porters creek	# 23 full, 8 bare
+manistee river	# 17 full, 21 bare
+harding icefield	# 32 full, 38 bare
+wild pacific	# 18 full, 6 bare
+juan de fuca marine	# 6 full, 1 bare
+ouray perimeter	# 21 full, 1 bare
+ice age national scenic	# 904 full, 0 bare
+howe sound crest	# 4 full, 1 bare
+condor gulch	# 13 full, 7 bare
+bonneville shoreline	# 38 full, 5 bare
+tomales point	# 14 full, 32 bare
+ozark highlands	# 118 full, 17 bare
+oconaluftee river	# 10 full, 10 bare
+middle prong	# 71 full, 73 bare
+makapuu lighthouse	# 6 full, 4 bare
+herman gulch	# 12 full, 26 bare
+boulder mail	# 7 full, 0 bare
+olympic discovery	# 17 full, 11 bare
+gregory canyon	# 23 full, 30 bare
+american discovery	# 51 full, 1 bare
+lone star hiking	# 19 full, 0 bare
+iron goat	# 4 full, 3 bare
+hall of mosses	# 7 full, 6 bare
+butcher jones	# 5 full, 2 bare
+matt davis	# 13 full, 5 bare
+kuliouou ridge	# 4 full, 1 bare
+bay area ridge	# 24 full, 1 bare
+swamp rabbit	# 41 full, 71 bare
+old spanish	# 3 full, 4 bare
+international appalachian	# 24 full, 0 bare
+cassidy arch	# 12 full, 20 bare
+border route	# 19 full, 10 bare
+under the rim	# 43 full, 9 bare
+ruby crest	# 73 full, 25 bare
+north bend rail	# 0 full, 0 bare
+noble canyon	# 24 full, 36 bare
+maah daah hey	# 30 full, 2 bare
+little miami scenic	# 0 full, 0 bare
+la cloche silhouette	# 39 full, 6 bare
+idaho centennial	# 23 full, 5 bare
+boone fork	# 4 full, 6 bare
+weir canyon	# 2 full, 4 bare
+romero canyon	# 26 full, 45 bare
+misery ridge	# 9 full, 16 bare
+lost dog wash	# 0 full, 0 bare
+little cataloochee	# 7 full, 4 bare
+laurel highlands hiking	# 84 full, 0 bare
+james irvine	# 19 full, 1 bare
+high trestle	# 12 full, 7 bare
+fort to sea	# 0 full, 0 bare
+fiery gizzard	# 7 full, 2 bare
+boy scout tree	# 7 full, 9 bare
+allegheny front	# 15 full, 4 bare
+vivian creek	# 91 full, 43 bare
+tuckerman ravine	# 76 full, 59 bare
+schuylkill river	# 6 full, 11 bare
+schoolhouse gap	# 12 full, 3 bare
+old spanish national historic	# 0 full, 0 bare
+kinsman ridge	# 64 full, 11 bare
+george s mickelson	# 11 full, 0 bare
+burke gilman	# 8 full, 6 bare
+bay circuit	# 7 full, 0 bare
+angels palace	# 22 full, 4 bare
+spruce railroad	# 18 full, 0 bare
+mingus creek	# 20 full, 18 bare
+la tuna canyon	# 0 full, 1 bare
+juan bautista de anza national historic	# 0 full, 0 bare
+cape scott	# 15 full, 33 bare
+sand bench	# 3 full, 2 bare
+railroad tunnel	# 11 full, 9 bare
+potomac heritage	# 70 full, 6 bare
+marshall canyon	# 5 full, 8 bare
+gregory ridge	# 20 full, 4 bare
+cleetwood cove	# 11 full, 11 bare
+arizona national scenic	# 16 full, 0 bare
+alakai swamp	# 24 full, 26 bare
+winner creek	# 7 full, 4 bare
+white rim overlook	# 5 full, 0 bare
+western maryland rail	# 3 full, 0 bare
+uinta highline	# 20 full, 2 bare
+tanque verde ridge	# 8 full, 0 bare
+smokemont loop	# 4 full, 4 bare
+sespe river	# 9 full, 11 bare
+santa ana river	# 17 full, 14 bare
+ramapo dunderberg	# 10 full, 2 bare
+poudre river	# 12 full, 27 bare
+overmountain victory national historic	# 21 full, 0 bare
+ohlone wilderness	# 15 full, 16 bare
+mount fremont lookout	# 0 full, 1 bare
+heart of iowa nature	# 0 full, 0 bare
+greenbrier river	# 4 full, 7 bare
+greeley ponds	# 9 full, 20 bare
+deer springs	# 42 full, 24 bare
+cucumber gap	# 2 full, 4 bare
+crow pass	# 14 full, 21 bare
+colorado midland centennial	# 0 full, 0 bare
+big laguna	# 14 full, 13 bare
+batteries to bluffs	# 1 full, 0 bare
+ala kahakai national historic	# 0 full, 0 bare
+zim smith	# 6 full, 1 bare
+vickery creek	# 12 full, 15 bare
+theodore solomons	# 63 full, 12 bare
+taconic crest	# 62 full, 0 bare
+siyeh pass	# 32 full, 38 bare
+secret canyon	# 4 full, 8 bare
+saratoga gap	# 16 full, 11 bare
+santa paula canyon	# 19 full, 14 bare
+san clemente beach	# 0 full, 0 bare
+raccoon brook hills	# 0 full, 0 bare
+polly ann	# 20 full, 1 bare
+old salmon river	# 3 full, 0 bare
+old pinnacles	# 4 full, 1 bare
+oak flat loop	# 3 full, 3 bare
+northville lake placid	# 0 full, 0 bare
+north inlet	# 7 full, 12 bare
+nashua river rail	# 0 full, 0 bare
+mount kinsman	# 16 full, 5 bare
+mishe mokwa	# 9 full, 5 bare
+macomb orchard	# 18 full, 0 bare
+loy canyon	# 5 full, 0 bare
+kesugi ridge	# 5 full, 3 bare
+john dellenback dunes	# 4 full, 2 bare
+iron belle	# 43 full, 3 bare
+fossil exhibit	# 5 full, 2 bare
+forney ridge	# 10 full, 7 bare
+forney creek	# 7 full, 5 bare
+erie canalway	# 278 full, 72 bare
+elkhorn crest	# 7 full, 3 bare
+east applegate ridge	# 5 full, 0 bare
+coast to crest	# 64 full, 3 bare
+champlain canalway	# 140 full, 0 bare
+bradley fork	# 14 full, 17 bare
+bizz johnson	# 42 full, 13 bare
+ben tyler	# 21 full, 6 bare
+torrey c brown rail	# 0 full, 0 bare
+tony knowles coastal	# 3 full, 1 bare
+shut in	# 21 full, 10 bare
+sherburne pass	# 10 full, 6 bare
+plaster creek	# 13 full, 5 bare
+piegan pass	# 33 full, 30 bare
+pawnee buttes	# 4 full, 4 bare
+padilla bay shore	# 0 full, 0 bare
+oak canyon	# 13 full, 24 bare
+mosca pass	# 9 full, 3 bare
+mayhem gulch	# 3 full, 2 bare
+little brier gap	# 1 full, 1 bare
+limber pine nature	# 3 full, 0 bare
+lake superior coastal	# 0 full, 0 bare
+la verkin creek	# 7 full, 8 bare
+kettle valley rail	# 1 full, 0 bare
+high line canal	# 4 full, 2 bare
+great eastern	# 90 full, 6 bare
+grafton loop	# 8 full, 12 bare
+east inlet	# 4 full, 4 bare
+dune life nature	# 0 full, 0 bare
+dickey ridge	# 30 full, 18 bare
+cliff shelf nature	# 1 full, 0 bare
+cape cod rail	# 5 full, 0 bare
+bull run occoquan	# 1 full, 0 bare
+arroyo burro	# 60 full, 67 bare
+ammonoosuc ravine	# 90 full, 11 bare
+albright grove loop	# 0 full, 2 bare
+yurok loop	# 13 full, 17 bare
+webster cliff	# 32 full, 4 bare
+waimano falls	# 6 full, 0 bare
+wabash trace nature	# 0 full, 0 bare
+upper rogue river	# 14 full, 4 bare
+top of the giant	# 0 full, 3 bare
+sun notch	# 16 full, 6 bare
+stevens creek nature	# 5 full, 0 bare
+south mount elbert	# 11 full, 2 bare
+signal ridge	# 36 full, 25 bare
+shawangunk ridge	# 22 full, 17 bare
+shades of death	# 1 full, 0 bare
+root glacier	# 4 full, 5 bare
+road prong	# 6 full, 3 bare
+presidential rail	# 9 full, 0 bare
+path of the flood	# 0 full, 0 bare
+old croton aqueduct	# 6 full, 11 bare
+northwest national scenic	# 10 full, 0 bare
+northern rail	# 15 full, 0 bare
+navajo knobs	# 9 full, 16 bare
+mclane creek nature	# 2 full, 0 bare
+lost turkey	# 14 full, 0 bare
+little sycamore canyon	# 0 full, 4 bare
+little bottoms	# 14 full, 1 bare
+jones gap	# 36 full, 59 bare
+huntington ravine	# 27 full, 47 bare
+gumbo limbo	# 5 full, 4 bare
+grove nature	# 8 full, 2 bare
+great redwood	# 9 full, 0 bare
+gay lea wilson	# 0 full, 0 bare
+garfield ridge	# 45 full, 14 bare
+gale river	# 18 full, 27 bare
+fonta flora state	# 0 full, 0 bare
+fighting creek nature	# 0 full, 0 bare
+dusky footed woodrat	# 0 full, 0 bare
+donner lake rim	# 9 full, 0 bare
+don cecil	# 19 full, 1 bare
+desert ecology	# 2 full, 3 bare
+coyote song	# 5 full, 3 bare
+caddo bend	# 73 full, 0 bare
+burning bear	# 10 full, 6 bare
+buchanan pass	# 17 full, 5 bare
+booths rock	# 8 full, 0 bare
+blue ridge tunnel	# 0 full, 0 bare
+bill hall	# 8 full, 0 bare
+big springs hollow	# 3 full, 3 bare
+bennett creek	# 4 full, 8 bare
+ben johnson	# 14 full, 3 bare
+bear hair gap	# 9 full, 0 bare
+baxter creek	# 15 full, 34 bare
+baldface circle	# 28 full, 15 bare
+yosemite valley loop	# 16 full, 20 bare
+wildway overlook	# 5 full, 0 bare
+wild oak	# 15 full, 5 bare
+webster jackson	# 40 full, 7 bare
+washington old dominion	# 0 full, 1 bare
+wasatch crest	# 4 full, 3 bare
+truckee river legacy	# 11 full, 0 bare
+trans county	# 5 full, 0 bare
+thomas divide	# 5 full, 1 bare
+thermal belt rail	# 2 full, 0 bare
+tahoe yosemite	# 17 full, 25 bare
+slocan valley rail	# 164 full, 0 bare
+salt creek interpretive	# 4 full, 0 bare
+rodeo valley	# 3 full, 2 bare
+rocky point nature	# 4 full, 0 bare
+rim rock nature	# 1 full, 0 bare
+richard h goodwin	# 0 full, 0 bare
+rice canyon	# 27 full, 1 bare
+pratt river	# 6 full, 6 bare
+peralta canyon	# 2 full, 3 bare
+pelican creek nature	# 9 full, 0 bare
+peekaboo loop	# 4 full, 4 bare
+north sylamore creek	# 0 full, 4 bare
+north idaho centennial	# 0 full, 1 bare
+north fork skokomish river	# 1 full, 1 bare
+north coast inland	# 0 full, 0 bare
+nature coast state	# 0 full, 0 bare
+moses spring	# 14 full, 1 bare
+moores wall loop	# 0 full, 0 bare
+mizzy lake	# 23 full, 0 bare
+minong ridge	# 10 full, 8 bare
+miami fort	# 12 full, 3 bare
+meyers homestead	# 6 full, 0 bare
+mau har	# 4 full, 1 bare
+martin canyon creek	# 0 full, 0 bare
+major welch	# 7 full, 0 bare
+lyons creek	# 27 full, 46 bare
+lebanon valley rail	# 1 full, 0 bare
+lake ouachita vista	# 0 full, 0 bare
+ingalls creek	# 40 full, 84 bare
+hyalite creek	# 7 full, 8 bare
+humber valley heritage	# 0 full, 0 bare
+heart creek	# 6 full, 4 bare
+hale brook	# 22 full, 9 bare
+guadalupe ridge	# 9 full, 13 bare
+great river state	# 0 full, 0 bare
+gray whale cove	# 7 full, 4 bare
+grand parade	# 32 full, 12 bare
+glen boulder	# 13 full, 23 bare
+giant city nature	# 0 full, 0 bare
+gadwah notch	# 6 full, 5 bare
+fremont gorge overlook	# 12 full, 5 bare
+flume slide	# 21 full, 10 bare
+flint hills nature	# 33 full, 0 bare
+fern canyon loop	# 2 full, 2 bare
+enola low grade	# 0 full, 0 bare
+dutchmans creek	# 15 full, 2 bare
+dixie mine	# 5 full, 2 bare
+cumberland river bicentennial	# 0 full, 0 bare
+cotton valley rail	# 0 full, 0 bare
+chester creek	# 21 full, 6 bare
+ceran saint vrain	# 1 full, 0 bare
+central garden	# 3 full, 6 bare
+carter moriah	# 47 full, 31 bare
+capilano pacific	# 10 full, 0 bare
+burnt bridge creek	# 1 full, 1 bare
+bright angel point	# 5 full, 10 bare
+boston run	# 13 full, 3 bare
+blue basin overlook	# 1 full, 0 bare
+big horn canyon	# 0 full, 0 bare
+big carp river	# 9 full, 9 bare
+bear gulch cave	# 11 full, 11 bare
+austin brook	# 11 full, 3 bare
+anne u white	# 9 full, 0 bare
+aliso canyon	# 16 full, 24 bare
+alaska basin	# 9 full, 19 bare
+a b young	# 0 full, 0 bare
+yampa river core	# 0 full, 0 bare
+wildcat gorge	# 6 full, 6 bare
+white river state	# 1 full, 0 bare
+west rim loop	# 2 full, 2 bare
+wabash heritage	# 5 full, 0 bare
+virginia highlands horse	# 0 full, 0 bare
+veach gap	# 11 full, 6 bare
+union pacific rail	# 5 full, 0 bare
+toiyabe crest	# 10 full, 1 bare
+three brook loop ski	# 0 full, 0 bare
+thames valley	# 8 full, 4 bare
+tallulah gorge floor	# 0 full, 0 bare
+sweeney ridge	# 6 full, 12 bare
+sweat heifer creek	# 1 full, 0 bare
+summey cove	# 3 full, 3 bare
+sugarlands valley nature	# 2 full, 0 bare
+sucker brook bay	# 0 full, 0 bare
+south taconic	# 12 full, 1 bare
+sourdough ridge	# 4 full, 7 bare
+snake den ridge	# 3 full, 2 bare
+slaughter creek	# 13 full, 19 bare
+sisson callahan	# 5 full, 1 bare
+seven hollows	# 18 full, 10 bare
+scuppernong springs nature	# 0 full, 0 bare
+savage river loop	# 3 full, 3 bare
+salmon creek	# 26 full, 46 bare
+rufus morgan	# 4 full, 9 bare
+ruby crest national recreation	# 1 full, 0 bare
+root creek	# 22 full, 23 bare
+rock jock	# 22 full, 24 bare
+rings loop	# 6 full, 0 bare
+redwood grove loop	# 0 full, 0 bare
+pothole point	# 12 full, 8 bare
+pinch in	# 14 full, 12 bare
+pima wash	# 5 full, 0 bare
+pelican valley	# 7 full, 5 bare
+ouachita national recreation	# 1 full, 0 bare
+ophir creek	# 3 full, 5 bare
+ohlone bluff	# 6 full, 0 bare
+oc e woods line state	# 0 full, 0 bare
+numa ridge lookout	# 0 full, 0 bare
+nubbin creek	# 3 full, 7 bare
+north mills river	# 0 full, 1 bare
+new england national scenic	# 7 full, 0 bare
+natchez trace national scenic	# 1 full, 0 bare
+nassau suffolk greenbelt	# 0 full, 0 bare
+musser gap	# 2 full, 4 bare
+moriah brook	# 8 full, 6 bare
+moosup valley state park	# 0 full, 0 bare
+momyer creek	# 63 full, 1 bare
+mohawk hudson bike hike	# 9 full, 0 bare
+medicine root	# 12 full, 5 bare
+macs gap	# 9 full, 0 bare
+lower yahara river	# 0 full, 0 bare
+lower thomas creek	# 0 full, 0 bare
+lost man creek	# 3 full, 0 bare
+lost goldmine	# 7 full, 2 bare
+los gatos creek	# 1 full, 0 bare
+long island greenbelt	# 0 full, 0 bare
+long bunk	# 4 full, 1 bare
+little stony national recreation	# 3 full, 0 bare
+lightning lakes chain	# 0 full, 0 bare
+lewis creek	# 108 full, 199 bare
+larkin state park	# 0 full, 0 bare
+lansing river	# 120 full, 0 bare
+lafayette ridge	# 6 full, 2 bare
+kanes creek	# 10 full, 11 bare
+judge davis	# 11 full, 3 bare
+joseph plumb martin	# 0 full, 0 bare
+joe creek nature	# 0 full, 0 bare
+jean lunning	# 11 full, 0 bare
+indian portage	# 10 full, 0 bare
+incline flume	# 5 full, 0 bare
+housatonic range	# 5 full, 0 bare
+horn canyon	# 4 full, 4 bare
+hidden mesa	# 12 full, 12 bare
+hidden diversity multi use	# 0 full, 0 bare
+hancock notch	# 3 full, 6 bare
+hamms gulch	# 3 full, 4 bare
+gunter fork	# 2 full, 4 bare
+gulpha gorge	# 68 full, 27 bare
+great gulf	# 53 full, 65 bare
+graveyard ridge	# 11 full, 2 bare
+graveyard fields loop	# 2 full, 0 bare
+grasslands community	# 12 full, 0 bare
+gorge brook	# 4 full, 5 bare
+good harbor bay	# 0 full, 1 bare
+ernie maxwell	# 4 full, 3 bare
+east rock creek	# 34 full, 12 bare
+east lake sammamish	# 1 full, 0 bare
+east bay skyline national recreation	# 0 full, 0 bare
+dune ridge	# 3 full, 2 bare
+diceys mill	# 13 full, 2 bare
+diamond head summit	# 1 full, 0 bare
+daniel boone scout	# 3 full, 0 bare
+cummins creek loop	# 3 full, 0 bare
+cross rivendell	# 4 full, 2 bare
+craig britton	# 5 full, 0 bare
+crag crest national recreation	# 4 full, 0 bare
+cold brook canyon	# 0 full, 0 bare
+clarion little toby	# 1 full, 0 bare
+chorro grande	# 7 full, 5 bare
+china creek	# 10 full, 16 bare
+chihuahuan desert nature	# 0 full, 3 bare
+centennial ridges	# 7 full, 0 bare
+cedar gulch	# 6 full, 1 bare
+caps ridge	# 22 full, 8 bare
+caines head coastal	# 0 full, 0 bare
+cades cove nature	# 1 full, 0 bare
+bump and grind	# 6 full, 3 bare
+buckquarter creek	# 12 full, 19 bare
+bruin bluff	# 18 full, 9 bare
+bradley creek	# 5 full, 10 bare
+borrego palm canyon nature	# 0 full, 0 bare
+big dry creek	# 0 full, 0 bare
+bear hole	# 7 full, 5 bare
+back creek	# 4 full, 4 bare
+arnold rim	# 270 full, 0 bare
+ambassador whitehouse	# 17 full, 1 bare
+alum hollow	# 4 full, 4 bare
+alpine lakes loop	# 1 full, 0 bare
+alpine garden	# 18 full, 14 bare
+abbott ridge	# 8 full, 8 bare
+la manche village	# 0 full, 0 bare

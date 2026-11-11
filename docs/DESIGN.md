@@ -1779,6 +1779,20 @@ Sleeping Giant PP, but has no destination or trail, so hikes.py drops it.
 OSM calls the trail "Top of the Giant Trail", and extraction drops a trailing
 "Trail" from a name only for canyon trails.
 
+**Trail names without "Trail" (2026-11-11).** `data/gazetteer/trail_aliases.txt`
+lists trails extraction also matches without the trailing "Trail". It is
+built from extract-run-39's trail groups with 3+ sites (1,524 names), minus
+bases that are other features' names. A base is kept if page text (a
+quarter of page-pass-run-9) writes the full "X Trail" at least 30% of the
+times it writes X. Bases mentioned fewer than 5 times are kept only with 3+
+words. A few generic ones are dropped by hand. That leaves 434, e.g. Top of
+the Giant, South Kaibab, Alum Cave, Siyeh Pass, Tuckerman Ravine. Dropped as
+phrases: High Sierra (1,642 full vs 66,324 bare), West Coast, Big Sur, Old
+Growth, Fourth of July, Trans Canada (the highway). On the recall pages:
+Siyeh Pass x3, Top of the Giant (Sleeping Giant, travisnovitsky), Art Loeb.
+On 65k pages of page-pass-run-9: 111 gain a location, 5 lose one, 130 move
+>25 km, mostly within a state.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
