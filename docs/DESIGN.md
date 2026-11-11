@@ -1637,7 +1637,8 @@ organisation gain is real (americansouthwest.net +1,981, backpacker.com
 +811, digthefalls, socialhiker hike logs), but five generated sites came
 through and are now excluded: naturalatlas.com, mountainzone.com (a stub
 page per summit), trekweather.com, alaska.guide and pixeoapp.com (~1,600
-rows). The table was rebuilt without them (see below).
+rows). Rebuilt without them as `extract-run-35`: 176,760 hikes (102,852
+personal, 73,817 organisation); the recall test is unchanged.
 
 ## Runner budget
 
