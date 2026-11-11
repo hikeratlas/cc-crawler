@@ -1739,6 +1739,16 @@ than recall: most "page not in harvested captures" misses are on sites with
 no kept pages, which this harvest didn't cover. `route-inputs-run-2` carries
 the new table to basemap's routes build.
 
+Part 3, blogs. The recall misses left after fix 3 have mixed causes (pages
+never captured, sites never selected, personal pages on university hosts),
+and a pass over every small site with hike-name URLs and nothing kept would
+be ~12k sites and millions of pages. One cause is cheap to fix: part 2 drops
+personal blogs whose 5 sampled pages average under 0.35 because the blog is
+about more than hiking (desertsurvivor.blogspot.com 0.159, travisnovitsky
+0.212, both with recall-test reports). `redo_blogs.txt`: 841 blog-platform
+sites part 2 judged at 0.15-0.35, run again without a site bar (names only,
+at most 50 a site); the page model judges each page.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
