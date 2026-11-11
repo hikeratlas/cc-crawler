@@ -1,0 +1,53 @@
+# Hike names with stop words (of, the, and, to...) that slugs often drop: "top-of-giant" for Top of the Giant.
+# slugnames.py matches these with stop words removed from both name and slug. Only names with a hike group of
+# 3+ sites in extract-run-35's hike table: most such OSM names are everyday phrases ("out and about" trail).
+# Regenerate from a newer hike table to add names. Sites per name in the comment.
+# Dropped by hand as everyday phrases or brands in URLs: bump and grind, chain of lakes, fourth of july, hole in the ground, hole in the wall, lake of the ozarks, rock of ages, sea to sky, sea to summit, stairway to heaven, top of the world, tower of babel.
+la plata peak	# 38
+mount of the holy cross	# 37
+trail of ten falls	# 35
+hole in the rock	# 25
+skyline to the sea	# 19
+mount le conte	# 15
+island in the sky	# 15
+east end of rundle	# 14
+hall of mosses	# 13
+juan de fuca marine	# 12
+under the rim	# 10
+tom dick and harry mountain	# 10
+ring the peak	# 10
+lake of the angels	# 10
+la cloche silhouette	# 10
+peek a boo slot canyon	# 9
+la tuna canyon	# 8
+hemmed in hollow falls	# 8
+lake of the clouds	# 7
+hole in the wall falls	# 7
+fourth of july lake	# 7
+fort to sea	# 7
+batteries to bluffs	# 7
+la verkin creek	# 6
+bull of the woods	# 6
+behind the rocks	# 6
+top of the giant	# 5
+plain of six glaciers	# 5
+palouse to cascades state park	# 5
+juan bautista de anza national historic	# 5
+journey behind the falls	# 5
+chesapeake and ohio canal	# 5
+shades of death	# 4
+lake of the hanging glacier	# 4
+lake of glass	# 4
+la manche village	# 4
+la junta peak	# 4
+la barge mountain	# 4
+coast to crest	# 4
+valley of the giants	# 3
+rails to river	# 3
+path of the flood	# 3
+now and then falls	# 3
+lake tear of the clouds	# 3
+la madre mountain	# 3
+heart of iowa nature	# 3
+going to the sun mountain	# 3
+balm of gilead mountain	# 3

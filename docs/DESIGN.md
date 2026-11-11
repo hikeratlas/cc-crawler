@@ -1757,6 +1757,19 @@ Combined as `extract-run-38` (page passes 3-11): 188,202 hikes (+1,999),
 report stays out: its URL is `top-of-giant.html`, which the place-name
 filter doesn't match to "Top of the Giant", and the blog hit the 50 cap.
 
+**Stop words in slugs (2026-11-11).** Slugs often drop stop words
+(travisnovitsky's `top-of-giant.html` for Top of the Giant). Matching every
+index name with stop words removed from name and slug adds 2,567 matches per
+2.27M URLs, nearly all phrases ("fourth of july" 544, "out and about", "sound
+of music": OSM has trails by those names); limited to landform names, 120,
+also phrases ("down by the river", "mind the gap"). `slugnames.py` now does
+it only for `data/gazetteer/stopword_names.txt`: names with stop words that
+have a hike group of 3+ sites (La Plata Peak, Mount of the Holy Cross, Trail
+of Ten Falls, Skyline to the Sea, Hall of Mosses), minus a dozen dropped by
+hand as phrases or brands (Sea to Summit). ~91 more URLs per 2.27M, mostly
+on target. `filter_candidates.py --stopword-names-only` re-runs old harvests
+for just those.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
