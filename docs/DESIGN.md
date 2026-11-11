@@ -1770,6 +1770,15 @@ hand as phrases or brands (Sea to Summit). ~91 more URLs per 2.27M, mostly
 on target. `filter_candidates.py --stopword-names-only` re-runs old harvests
 for just those.
 
+Re-run over site-urls runs 2 and 4-13 (run 1 has no candidate files):
+53.6M candidate rows -> 1,984 new URLs from 696 sites (`site-content-run-17`)
+-> `page-pass-run-12` kept 456 -> `extract-run-39`: 188,406 hikes (+204),
+110,633 personal, 8,516 sites (+109). Recall unchanged at 61/117:
+travisnovitsky's Top of the Giant report now reaches extraction, located in
+Sleeping Giant PP, but has no destination or trail, so hikes.py drops it.
+OSM calls the trail "Top of the Giant Trail", and extraction drops a trailing
+"Trail" from a name only for canyon trails.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
