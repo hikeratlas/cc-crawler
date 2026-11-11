@@ -1727,6 +1727,18 @@ and re-judging them samples leftovers and scores low) and `redo_other.txt`
 (by URL hash), both site-content inputs. Part 1, kept sites, names only, at
 most 50 per site: ~95k URLs before leaving out pages already tried.
 
+Results. Part 1 (`site-content-run-13`): 52,746 URLs from 2,900 sites after
+leaving out pages already tried. Part 2 (`site-content-run-14`, judged by 5
+pages at 0.35): 729 of 11,896 sites kept, 18,410 URLs; the rest were the
+newspapers and directories. `page-pass-run-10` fetched 71,156 pages and kept
+25,567 (10,927 personal). Combined as `extract-run-37` (page passes 3-10):
+186,203 hikes (from 176,760), 108,996 personal (from 102,852), 7,773 sites
+(from 6,816). Recall: 59 of 117 personal test reports (from 58; a Wolverine
+Peak report on livinginak.blogspot.com). As estimated, fix 3 adds pages more
+than recall: most "page not in harvested captures" misses are on sites with
+no kept pages, which this harvest didn't cover. `route-inputs-run-2` carries
+the new table to basemap's routes build.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
