@@ -1680,11 +1680,17 @@ and rides, history or news pages that name the place, and trips that only
 pass through. Garibaldi: Garibaldi Lake from Rubble Creek 28 route + 80
 destination links, Panorama Ridge's three from-camp routes 12-18 each.
 
-**Changes that would help on the routes side.** Route ids are positions
-(`<park>/day/3`) and shift between builds, so links must be rebuilt with
-each routes build; a stable key (park, trailhead, destination, kind)
-would let links survive. OSM ids for the destination, trailhead and `via`
-trails would replace the name-and-distance join.
+**Routes-side changes (routes#153, basemap#265).** Route ids are
+positions (`<park>/day/3`) and shift between builds. Routes now also write
+a stable `key` (`<park>|day|<trailhead>|<destination>|<kind>`), which
+`route_links.tsv.gz` carries as `route_key`; store links by key. They also
+pass on OSM ids: `dest_osm_ids`, `from_osm_id`, `camp_osm_id`,
+`name_osm_id`. POIs (viewpoints, waterfalls, huts, trailheads) have ids in
+today's tiles; peaks and lakes get them with basemap#265. The matcher joins
+a destination by id first and falls back to name and position when no id
+matches: the same place can be two OSM features (Panorama Ridge is a
+viewpoint node in routes and a peak in the place index). Trail ways keep
+names only (their ids are in debug tiles only).
 
 ## Runner budget
 

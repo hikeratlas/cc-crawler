@@ -111,9 +111,10 @@ def load_routes(index_path, bundle_path):
             continue  # an alias entry pointing at another park's routes
         pname = park.get("name", "")
 
-        def add(rid, typ, h, title, route, frm, dest=None, dest_at=None, dest_kind=None):
+        def add(rid, typ, h, title, route, frm, dest=None, dest_at=None, dest_kind=None, dest_ids=None):
             out.append({
-                "id": rid, "type": typ, "park_id": pid, "park": pname, "title": title,
+                "id": rid, "key": h.get("key", ""), "dest_ids": [str(x) for x in dest_ids or []],
+                "type": typ, "park_id": pid, "park": pname, "title": title,
                 "name": h.get("name") or "", "from": frm, "dest": dest or "", "dest_at": dest_at,
                 "dest_kind": dest_kind or "", "kind": h.get("kind", ""),
                 "km": route.get("km"), "one_way_km": route.get("one_way_km"), "gain": route.get("gain"),
@@ -126,14 +127,15 @@ def load_routes(index_path, bundle_path):
 
         for i, h in enumerate(doc.get("day_hikes", [])):
             add(f"{pid}/day/{i}", "day", h, named(h, f"{h['dest']} from {h['from']}"), h["route"], h["from"],
-                h["dest"], h.get("dest_at"), h.get("dest_kind"))
+                h["dest"], h.get("dest_at"), h.get("dest_kind"), h.get("dest_osm_ids"))
         for i, b in enumerate(doc.get("base_camps", [])):
             camp = b["camp"]
-            add(f"{pid}/base/{i}", "approach", {"kind": "approach"}, f"{camp} from {b['from']}", b["approach"],
-                b["from"], camp, b.get("at"), "camp")
+            add(f"{pid}/base/{i}", "approach", {"kind": "approach", "key": b.get("key", "")},
+                f"{camp} from {b['from']}", b["approach"], b["from"], camp, b.get("at"), "camp",
+                [b["camp_osm_id"]] if b.get("camp_osm_id") else None)
             for j, h in enumerate(b.get("hikes", [])):
                 add(f"{pid}/base/{i}/{j}", "from-camp", h, named(h, f"{h['dest']} from {camp}"), h["route"],
-                    camp, h["dest"], h.get("dest_at"), h.get("dest_kind"))
+                    camp, h["dest"], h.get("dest_at"), h.get("dest_kind"), h.get("dest_osm_ids"))
         for i, t in enumerate(doc.get("point_to_points", [])):
             title = named(t, f"{t['from']} loop" if t.get("kind") == "loop" else f"{t['from']} to {t.get('to', '')}")
             add(f"{pid}/multi/{i}", "multi-day", t, title, t["route"], t["from"])
@@ -163,11 +165,14 @@ def main():
 
     # Destination features from the hike groups: name -> [(osm id, (lon, lat), kind)]
     feats_by_name = defaultdict(list)
+    group_ids = {}  # any OSM id of a destination group -> all its ids
     for g in read_tsv(args.groups):
         if g["group_kind"] != "destination" or not g["lat"]:
             continue
         ids = [g["osm_id"]] + [x for x in re.split(r"[;\s]+", g.get("merged_osm_ids") or "") if x]
         feats_by_name[key_name(g["name"])].append((ids, (float(g["lon"]), float(g["lat"])), g["feature_kind"]))
+        for x in ids:
+            group_ids[x] = ids
 
     # Pages by title destination and by title trail.
     # The place index includes the curated routes themselves (kind "hike",
@@ -193,8 +198,15 @@ def main():
     unmatched = Counter()
     for i, rt in enumerate(routes):
         if rt["dest"] and rt["dest_at"]:  # approaches too: many camps are named lakes
-            near = DEST_NEAR_M.get(rt["dest_kind"], DEST_NEAR_M["default"])
-            hits = [ids for ids, p, _ in feats_by_name.get(key_name(rt["dest"]), []) if metres(p, rt["dest_at"]) <= near]
+            # By OSM id where the routes build has it (routes#153), else by
+            # name and position: the same place can be two OSM features
+            # (Panorama Ridge is a viewpoint node in routes and a peak in the
+            # place index).
+            hits = [group_ids[x] for x in rt["dest_ids"] if x in group_ids]
+            if not hits:
+                near = DEST_NEAR_M.get(rt["dest_kind"], DEST_NEAR_M["default"])
+                hits = [ids for ids, p, _ in feats_by_name.get(key_name(rt["dest"]), [])
+                        if metres(p, rt["dest_at"]) <= near]
             if hits:
                 dest_of[i] = {x for ids in hits for x in ids}
                 for oid in dest_of[i]:
@@ -297,7 +309,7 @@ def main():
                 for i, ev in opts:
                     rows.append((i, u, "destination", ev))
 
-    cols = ["route_id", "park_id", "park", "route_title", "route_type", "match", "url", "title", "site", "site_kind",
+    cols = ["route_id", "route_key", "park_id", "park", "route_title", "route_type", "match", "url", "title", "site", "site_kind",
             "page_type", "date", "along", "via", "trailhead", "length_ratio"]
     rows.sort(key=lambda x: (routes[x[0]]["id"], x[2] != "route", x[1]))
     with gzip.open(os.path.join(args.out_dir, "route_links.tsv.gz"), "wt") as f:
@@ -305,7 +317,7 @@ def main():
         w.writerow(cols)
         for i, u, m, ev in rows:
             rt, p = routes[i], pages[u]
-            w.writerow([rt["id"], rt["park_id"], rt["park"], rt["title"], rt["type"], m, u,
+            w.writerow([rt["id"], rt["key"], rt["park_id"], rt["park"], rt["title"], rt["type"], m, u,
                         (p["name"] or "").replace("\t", " "), p["site"], p["site_kind"], p["page_type"], p["date"],
                         "; ".join(ev["along"]), "; ".join(ev["via"]), int(ev["trailhead"]),
                         "" if ev["ratio"] is None else f"{ev['ratio']:.2f}"])
