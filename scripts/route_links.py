@@ -31,6 +31,7 @@ route_links_report.md.
 """
 import argparse
 import csv
+import functools
 import glob
 import gzip
 import json
@@ -59,6 +60,7 @@ NEAR_ROUTE_M = 5000
 NOT_WAYPOINT = {"park"}
 
 
+@functools.lru_cache(maxsize=None)
 def key_name(name):
     s = norm(name or "")
     s = re.sub(r"^the ", "", s)
@@ -66,6 +68,7 @@ def key_name(name):
     return " ".join(s.split())
 
 
+@functools.lru_cache(maxsize=None)
 def trail_key(name):
     """Trail names compared without the generic words: "Helm Creek Trail" == "Helm Creek"."""
     s = key_name(name)
@@ -77,6 +80,34 @@ def metres(a, b):
     """Approximate distance between (lon, lat) points."""
     k = math.cos(math.radians((a[1] + b[1]) / 2))
     return math.hypot((a[0] - b[0]) * k, a[1] - b[1]) * 111_320
+
+
+_BOXES = {}
+
+
+def within_m(p, line, m):
+    """Whether point p is within m metres of a polyline. Points outside the
+    line's bounding box widened by m are rejected without walking the line
+    (most are: a page's places are mostly far from any one route), so the
+    answer is to_line_m's, faster."""
+    if not line:
+        return False
+    box = _BOXES.get(id(line))
+    if box is None or box[0] is not line:
+        xs, ys = [q[0] for q in line], [q[1] for q in line]
+        box = _BOXES[id(line)] = (line, min(xs), max(xs), min(ys), max(ys))
+    _, x0, x1, y0, y1 = box
+    dy = m / 111_320
+    if p[1] < y0 - dy or p[1] > y1 + dy:
+        return False
+    # Degrees of longitude per metre grow towards the poles: widen by the
+    # box's poleward edge, so the test only ever rejects points that are
+    # farther than m.
+    k = math.cos(math.radians(min(89.0, max(abs(y0), abs(y1)) + dy)))
+    dx = m / (111_320 * k)
+    if p[0] < x0 - dx or p[0] > x1 + dx:
+        return False
+    return to_line_m(p, line) <= m
 
 
 def to_line_m(p, line):
@@ -203,7 +234,7 @@ def write_bundle(routes, rows, pages, out_dir):
     def pick(urls, n):
         urls = sorted(set(urls), key=lambda u: (pages[u]["site_kind"] != "personal",
                                                 pages[u]["page_type"] != "trip_report",
-                                                -int((pages[u]["date"] or "0")[:4] or 0), pages[u]["name"]))
+                                                -int((pages[u]["date"] or "0")[:4] or 0), pages[u]["name"], u))
         out, per_site = [], Counter()
         for u in urls:
             if per_site[pages[u]["site"]] < PER_SITE_MAX:
@@ -224,7 +255,7 @@ def write_bundle(routes, rows, pages, out_dir):
     index, off = {}, 0
     with open(os.path.join(out_dir, "reports.bin"), "wb") as b:
         for pid in sorted(parks):
-            gz = gzip.compress(json.dumps(parks[pid], separators=(",", ":")).encode(), mtime=0)
+            gz = gzip.compress(json.dumps(parks[pid], separators=(",", ":"), sort_keys=True).encode(), mtime=0)
             b.write(gz)
             index[pid] = [off, len(gz)]
             off += len(gz)
@@ -356,7 +387,7 @@ def main():
             if (f.get("lat") is None or f.get("kind") in NOT_WAYPOINT or str(f.get("osm_id")) in dest_ids
                     or trail_key(f["name"]) in own):
                 continue
-            if to_line_m((f["lon"], f["lat"]), rt["line"]) <= ALONG_M:
+            if within_m((f["lon"], f["lat"]), rt["line"], ALONG_M):
                 along.append(f["name"])
         names = {trail_key(f["name"]) for f in fs} | {trail_key(t) for t in (pages[u]["trails"] or "").split(";") if t}
         names.discard("")
@@ -385,7 +416,7 @@ def main():
         p = pages[u]
         pts = [(float(p["lon"]), float(p["lat"]))] if p.get("lat") and p.get("lon") else []
         pts += [(f["lon"], f["lat"]) for f in pfeat.get(u, []) if f.get("lat") is not None and f.get("kind") != "park"]
-        return any(to_line_m(q, rt["line"]) <= NEAR_ROUTE_M for q in pts)
+        return any(within_m(q, rt["line"], NEAR_ROUTE_M) for q in pts)
 
     def strength(ev):
         # A distance far from the route's (round trip or one way) says the
