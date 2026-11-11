@@ -35,6 +35,14 @@ on:
         description: "Optional: keep only sites listed in this repo file"
         default: ""
         required: false
+      max_per_site:
+        description: "At most this many pages per site (0 = no cap)"
+        default: "0"
+        required: true
+      names_only:
+        description: "Keep only URLs that name a Hiker Atlas hike or landform (not just a hiking word): the precise part of a big harvest"
+        type: boolean
+        default: false
       max_unmatched:
         description: "With all_candidates: at most this many non-matching pages per site (0 = no cap)"
         default: "0"
@@ -79,6 +87,8 @@ jobs:
           extra=(); [ -n "${{ inputs.site_list }}" ] && extra+=(--sites "${{ inputs.site_list }}")
           [ ${#skip[@]} -gt 0 ] && extra+=(--skip-urls "${skip[@]}")
           [ -f index.db ] && extra+=(--index index.db)
+          ${{ inputs.names_only }} && extra+=(--names-only)
+          extra+=(--max-per-site "${{ inputs.max_per_site }}")
           python3 -I scripts/filter_candidates.py --candidates 'cand/*/*.tsv.gz' --out-dir filtered ${{ inputs.all_candidates && '--all' || '' }} \
             --max-unmatched "${{ inputs.max_unmatched }}" "${extra[@]}"
           python3 -I scripts/site_content.py sample --candidates 'filtered/*.tsv.gz' \
@@ -164,6 +174,8 @@ jobs:
           extra=(); [ -n "${{ inputs.site_list }}" ] && extra+=(--sites "${{ inputs.site_list }}")
           [ ${#skip[@]} -gt 0 ] && extra+=(--skip-urls "${skip[@]}")
           [ -f index.db ] && extra+=(--index index.db)
+          ${{ inputs.names_only }} && extra+=(--names-only)
+          extra+=(--max-per-site "${{ inputs.max_per_site }}")
           python3 -I scripts/filter_candidates.py --candidates 'cand/*/*.tsv.gz' --out-dir filtered ${{ inputs.all_candidates && '--all' || '' }} \
             --max-unmatched "${{ inputs.max_unmatched }}" "${extra[@]}"
           python3 -I scripts/site_content.py score --pages 'pages/*.jsonl' --candidates 'filtered/*.tsv.gz' \
