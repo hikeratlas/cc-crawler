@@ -1749,6 +1749,14 @@ about more than hiking (desertsurvivor.blogspot.com 0.159, travisnovitsky
 sites part 2 judged at 0.15-0.35, run again without a site bar (names only,
 at most 50 a site); the page model judges each page.
 
+Results: `site-content-run-15` kept 17,291 URLs from the 841 blogs;
+`page-pass-run-11` kept 4,145 pages (3,128 personal) from 825 of them.
+Combined as `extract-run-38` (page passes 3-11): 188,202 hikes (+1,999),
+110,541 personal (+1,545), 8,407 sites (+634). Recall: 61 of 117 personal
+(desertsurvivor's Wheeler Peak report). travisnovitsky's Top of the Giant
+report stays out: its URL is `top-of-giant.html`, which the place-name
+filter doesn't match to "Top of the Giant", and the blog hit the 50 cap.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
