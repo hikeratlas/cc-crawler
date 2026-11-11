@@ -1700,6 +1700,29 @@ spring destination has an id; 25,750 of 35,392 hikes a trailhead id):
 70,448 links, 18,281 route-specific; 4,094 day hikes with a destination
 that has pages (4,061 by name alone).
 
+### Route links in production (2026-11-11)
+
+basemap's routes build links trip reports to the routes it has just
+curated, so links always match the build:
+
+1. cc-crawler's `route-inputs.yml` publishes `route-inputs-run-<n>`:
+   `hikes.tsv.gz`, `hike_groups.tsv.gz` and `route_features.jsonl.gz`
+   (each hike-table page's mentioned places, 15 MB; `route_links.py
+   --write-features`). Run it after each combined extraction.
+2. basemap's `routes.yml` checks out cc-crawler (public), downloads the
+   newest `route-inputs-run-*` release and runs `route_links.py --features
+   ... --bundle-dir`, then uploads `reports.json` and `reports.bin` next to
+   the routes bundle (`routes/<namespace>/`).
+3. The website reads them like the routes bundle: per park, route key ->
+   `{reports, about}`; at most 8 of each, personal sites first, at most two
+   per site.
+
+`data/excluded_urls.csv` (url,reason) lists pages never to link; it is read
+from cc-crawler's main branch at each routes build.
+
+First bundle (routes bundle 42952774778, `extract-run-35`): 2,373 parks,
+6,139 routes with something to show, 1.8 MB.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the

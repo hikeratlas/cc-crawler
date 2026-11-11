@@ -142,6 +142,94 @@ def load_routes(index_path, bundle_path):
     return out
 
 
+EXCLUDED_URLS_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "excluded_urls.csv")
+# What the website shows per route: trip reports and trail guides that follow
+# it, and pages about its destination; personal sites first, at most two
+# pages per site, so one prolific site doesn't fill the list.
+REPORTS_MAX, ABOUT_MAX, PER_SITE_MAX = 8, 8, 2
+FEATURE_KEYS = ("name", "kind", "osm_id", "lat", "lon", "long_trail")
+
+
+def feature_records(features_path, extracted):
+    """Yield {url, features} records (and one {long_trails} record) from a
+    route_features file or from extracted-*.jsonl.gz."""
+    paths = [features_path] if features_path else sorted({p for pat in extracted for p in glob.glob(pat)})
+    for p in paths:
+        with gzip.open(p, "rt") as f:
+            for line in f:
+                if '"url"' in line or '"long_trails"' in line:
+                    yield json.loads(line)
+
+
+def write_features(hikes_path, extracted, out):
+    """The places each hike-table page mentions, trimmed to what linking
+    needs: a much smaller input than every extracted page."""
+    urls = {r["url"] for r in read_tsv(hikes_path)}
+    long_trails, n = set(), 0
+    with gzip.open(out, "wt") as o:
+        for r in feature_records(None, extracted):
+            fs = r.get("features") or []
+            long_trails |= {f["name"] for f in fs if f.get("long_trail")}
+            if r["url"] in urls:
+                o.write(json.dumps({"url": r["url"], "features": [
+                    {k: f[k] for k in FEATURE_KEYS if f.get(k) is not None} for f in fs]}) + "\n")
+                n += 1
+        o.write(json.dumps({"long_trails": sorted(long_trails)}) + "\n")
+    print(f"wrote {n:,} pages' features to {out}", file=sys.stderr)
+
+
+def write_bundle(routes, rows, pages, out_dir):
+    """reports.bin: each park's links as gzipped JSON, end to end, located by
+    reports.json ({"bundle": "reports.bin", "parks": {<park id>: [offset,
+    length]}}), like the routes build's own bundle. A park's JSON maps each
+    route's key (its id for builds without keys) to
+      {"reports": [...], "about": [...]}
+    where reports follow the route and about pages are about its destination
+    (way up unknown, or another way). Each page is {url, title, site,
+    personal, type, date}, with empty fields left out."""
+    by_route = defaultdict(lambda: {"route": [], "destination": []})
+    for i, u, m, _ in rows:
+        by_route[i][m].append(u)
+
+    def page(u):
+        p = pages[u]
+        e = {"url": u, "title": p["name"], "site": p["site"], "personal": p["site_kind"] == "personal",
+             "type": p["page_type"], "date": p["date"]}
+        return {k: v for k, v in e.items() if v not in ("", None)}
+
+    def pick(urls, n):
+        urls = sorted(set(urls), key=lambda u: (pages[u]["site_kind"] != "personal",
+                                                pages[u]["page_type"] != "trip_report",
+                                                -int((pages[u]["date"] or "0")[:4] or 0), pages[u]["name"]))
+        out, per_site = [], Counter()
+        for u in urls:
+            if per_site[pages[u]["site"]] < PER_SITE_MAX:
+                per_site[pages[u]["site"]] += 1
+                out.append(page(u))
+                if len(out) == n:
+                    break
+        return out
+
+    parks = defaultdict(dict)
+    for i, links in by_route.items():
+        rt = routes[i]
+        shown = pick(links["route"], REPORTS_MAX)
+        seen = {p["url"] for p in shown}
+        about = pick([u for u in links["destination"] if u not in seen], ABOUT_MAX)
+        if shown or about:
+            parks[rt["park_id"]][rt["key"] or rt["id"]] = {k: v for k, v in (("reports", shown), ("about", about)) if v}
+    index, off = {}, 0
+    with open(os.path.join(out_dir, "reports.bin"), "wb") as b:
+        for pid in sorted(parks):
+            gz = gzip.compress(json.dumps(parks[pid], separators=(",", ":")).encode(), mtime=0)
+            b.write(gz)
+            index[pid] = [off, len(gz)]
+            off += len(gz)
+    json.dump({"bundle": "reports.bin", "parks": index}, open(os.path.join(out_dir, "reports.json"), "w"))
+    print(f"reports bundle: {len(parks):,} parks, "
+          f"{sum(len(v) for v in parks.values()):,} routes, {off / 1e6:.1f} MB", file=sys.stderr)
+
+
 def read_tsv(path):
     with gzip.open(path, "rt") as f:
         yield from csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE)
@@ -149,16 +237,32 @@ def read_tsv(path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--routes-index", required=True)
-    ap.add_argument("--routes-bundle", required=True)
+    ap.add_argument("--routes-index")
+    ap.add_argument("--routes-bundle")
     ap.add_argument("--hikes", required=True)
-    ap.add_argument("--groups", required=True)
+    ap.add_argument("--groups")
     ap.add_argument("--extracted", nargs="+", default=[], help="extracted-*.jsonl.gz (globs allowed)")
-    ap.add_argument("--out-dir", required=True)
+    ap.add_argument("--features", help="route_features.jsonl.gz (from --write-features), instead of --extracted")
+    ap.add_argument("--write-features", metavar="FILE",
+                    help="only write the places each hike-table page mentions (from --extracted) to FILE, the "
+                         "compact input that hikeratlas/basemap's routes build links with, and exit")
+    ap.add_argument("--exclude-urls", default=EXCLUDED_URLS_CSV, help="CSV of pages never to link (url,reason)")
+    ap.add_argument("--out-dir", help="route_links.tsv.gz and route_links_report.md")
+    ap.add_argument("--bundle-dir", help="reports.json and reports.bin, for the website (see write_bundle)")
     ap.add_argument("--sample-parks", default="Garibaldi,Killarney,Jasper",
                     help="comma-separated park name fragments to list in the report")
     args = ap.parse_args()
-    os.makedirs(args.out_dir, exist_ok=True)
+    if args.write_features:
+        write_features(args.hikes, args.extracted, args.write_features)
+        return
+    if not (args.routes_index and args.routes_bundle and args.groups and (args.out_dir or args.bundle_dir)):
+        ap.error("--routes-index, --routes-bundle, --groups and --out-dir or --bundle-dir are required")
+    for d in (args.out_dir, args.bundle_dir):
+        if d:
+            os.makedirs(d, exist_ok=True)
+    excluded = set()
+    if args.exclude_urls and os.path.exists(args.exclude_urls):
+        excluded = {r["url"].strip() for r in csv.DictReader(open(args.exclude_urls)) if r["url"].strip()}
 
     routes = load_routes(args.routes_index, args.routes_bundle)
     print(f"{len(routes):,} routes", file=sys.stderr)
@@ -180,6 +284,8 @@ def main():
     pages, by_dest, by_trail, by_route = {}, defaultdict(list), defaultdict(list), defaultdict(list)
     for r in read_tsv(args.hikes):
         u = r["url"]
+        if u in excluded:
+            continue
         pages[u] = r
         for oid in (r["destination_osm_ids"] or "").split(";"):
             if oid.strip():
@@ -228,17 +334,15 @@ def main():
     # Features each candidate page mentions (from the extraction).
     pfeat = {}
     long_trails = set()
-    for p in sorted({p for pat in args.extracted for p in glob.glob(pat)}):
-        with gzip.open(p, "rt") as f:
-            for line in f:
-                if '"url"' not in line:
-                    continue
-                r = json.loads(line)
-                if r["url"] in need:
-                    pfeat[r["url"]] = r.get("features") or []
-                for f in r.get("features") or []:
-                    if f.get("long_trail"):
-                        long_trails.add(trail_key(f["name"]))
+    for r in feature_records(args.features, args.extracted):
+        if "long_trails" in r:
+            long_trails |= {trail_key(n) for n in r["long_trails"]}
+            continue
+        if r["url"] in need:
+            pfeat[r["url"]] = r.get("features") or []
+        for f in r.get("features") or []:
+            if f.get("long_trail"):
+                long_trails.add(trail_key(f["name"]))
 
     # Score every (route, page) pair, then decide route vs destination links.
     def evidence(rt, u, dest_ids):
@@ -313,6 +417,10 @@ def main():
                 for i, ev in opts:
                     rows.append((i, u, "destination", ev))
 
+    if args.bundle_dir:
+        write_bundle(routes, rows, pages, args.bundle_dir)
+    if not args.out_dir:
+        return
     cols = ["route_id", "route_key", "park_id", "park", "route_title", "route_type", "match", "url", "title", "site", "site_kind",
             "page_type", "date", "along", "via", "trailhead", "length_ratio"]
     rows.sort(key=lambda x: (routes[x[0]]["id"], x[2] != "route", x[1]))
