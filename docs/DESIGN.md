@@ -1640,6 +1640,52 @@ page per summit), trekweather.com, alaska.guide and pixeoapp.com (~1,600
 rows). Rebuilt without them as `extract-run-35`: 176,760 hikes (102,852
 personal, 73,817 organisation); the recall test is unchanged.
 
+## Route links (2026-11-11)
+
+Which pages follow each Hiker Atlas curated route (hikeratlas/routes).
+`scripts/route_links.py` (workflow `route-links.yml`) reads a routes build
+(`index.json` plus its bundle: per park, day hikes, base camps with their
+approach and from-camp hikes, and multi-day trips, each with destination
+name, kind and position, trailhead, `via` trail names, length, gain and
+line) and the combined hike table:
+
+1. **Destination.** A route's destination is matched to a hike-group
+   feature by name and position (800 m; 3 km for camps; 8 km for lakes,
+   whose routes end at the shore where the trail arrives, while the hike
+   table has the centre: 3 km apart for Garibaldi Lake). Candidate pages
+   are those whose title names that feature. Routes that follow an OSM
+   hiking route ("Garibaldi Lake Trail") also take pages naming that trail,
+   and pages that extraction already matched to the route itself (the place
+   index contains the curated routes, kind `hike`, id `<park>/day/<i>`).
+2. **Way up.** Evidence that a page follows this route rather than another
+   to the same destination: places it mentions within 300 m of the route's
+   line, the route's `via` trails, its trailhead. Not evidence: trails named
+   after the destination or the route ("Mount Bierstadt Trail"), long trails
+   (a thru-hiker names the Appalachian Trail everywhere), trailheads named
+   after either. Pages found only by a long route's name must mention a
+   place along this route's line.
+3. **Length.** A page distance outside 0.5-2x the route's (round trip or one
+   way) cancels the way-up evidence; among routes with equal evidence, the
+   one whose length fits within 0.8-1.25x wins.
+
+A link is `route` when the evidence picks this route among the
+destination's routes, else `destination` (on every route to it).
+
+First run, routes build of 2026-11-10 and `extract-run-35`: 69,943 links,
+18,068 route-specific; 4,061 of 32,077 day hikes have a destination with
+pages (most curated routes go to features nobody in the corpus wrote
+about), 2,100 have a route-specific link from a personal site. In a
+sample of 40 route-specific links about 30 are right; the rest are races
+and rides, history or news pages that name the place, and trips that only
+pass through. Garibaldi: Garibaldi Lake from Rubble Creek 28 route + 80
+destination links, Panorama Ridge's three from-camp routes 12-18 each.
+
+**Changes that would help on the routes side.** Route ids are positions
+(`<park>/day/3`) and shift between builds, so links must be rebuilt with
+each routes build; a stable key (park, trailhead, destination, kind)
+would let links survive. OSM ids for the destination, trailhead and `via`
+trails would replace the name-and-distance join.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the

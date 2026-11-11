@@ -1,0 +1,68 @@
+# Link hike pages to Hiker Atlas curated routes (hikeratlas/routes): which
+# trip reports and trail guides follow each route. Reads a routes build's
+# bundle and an extract release's hike table, plus the extracted pages of
+# every release that went into it. Publishes a route-links-run-<n> release.
+# One Arm job. See scripts/route_links.py and docs/DESIGN.md, "Route links".
+name: route-links
+
+on:
+  workflow_dispatch:
+    inputs:
+      extract_release:
+        description: "Extract release with the combined hike table (hikes.tsv.gz, hike_groups.tsv.gz)"
+        default: "extract-run-35"
+        required: true
+      extracted_releases:
+        description: "Comma-separated extract releases whose extracted-*.jsonl.gz to read (the combined one and every release it combined)"
+        default: "extract-run-35,extract-run-28,extract-run-29,extract-run-30,extract-run-31,extract-run-32,extract-run-33"
+        required: true
+      routes_url:
+        description: "Routes build: the directory holding index.json and its bundle"
+        default: "https://public.hikeratlas.com/routes/north-america"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  links:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p routes hikes prev
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o routes/index.json "${{ inputs.routes_url }}/index.json"
+          bundle=$(jq -r .bundle routes/index.json)
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o routes/bundle.bin "${{ inputs.routes_url }}/$bundle"
+          gh release download "${{ inputs.extract_release }}" --dir hikes --pattern hikes.tsv.gz --pattern hike_groups.tsv.gz
+          for rel in $(echo "${{ inputs.extracted_releases }}" | tr ',' ' '); do
+            gh release download "$rel" --pattern 'extracted-*.jsonl.gz' --dir "prev/$rel"
+          done
+      - name: Link pages to routes
+        run: |
+          python3 -I scripts/route_links.py --routes-index routes/index.json --routes-bundle routes/bundle.bin \
+            --hikes hikes/hikes.tsv.gz --groups hikes/hike_groups.tsv.gz \
+            --extracted 'prev/*/extracted-*.jsonl.gz' --out-dir out
+          cat out/route_links_report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: route-links
+          path: out/
+          retention-days: 30
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="route-links-run-${{ github.run_number }}"
+          # No --target: see extract.yml.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Route links (run ${{ github.run_number }})" \
+            --notes "Hike pages linked to curated routes from ${{ inputs.routes_url }}, using ${{ inputs.extract_release }}. route_links.tsv.gz has one row per (route, page): match is 'route' when the page's places, trails or trailhead point at this route among the destination's routes, 'destination' when the page is about the destination but its way up is unknown. See route_links_report.md. Built from commit $GITHUB_SHA."
+          gh release upload --clobber "$tag" out/route_links.tsv.gz out/route_links_report.md
