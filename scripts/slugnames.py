@@ -94,6 +94,48 @@ def load(index_path):
     return out
 
 
+# Slugs often drop stop words ("top-of-giant" for Top of the Giant). Matching
+# every name that way matches everyday phrases ("fourth of july", "out and
+# about" are OSM trails too), so only the names in stopword_names.txt (hike
+# names people write reports about) also match with stop words removed.
+STOPWORDS = {"the", "a", "an", "of", "and", "at", "in", "on", "to", "by", "for", "de", "la", "le", "du", "des"}
+
+
+def _strip(toks):
+    return tuple(t for t in toks if t not in STOPWORDS)
+
+
+@lru_cache(maxsize=1)
+def _stopword_names():
+    """stop-word-free name tokens -> the name."""
+    p = os.path.join(_HERE, "..", "data", "gazetteer", "stopword_names.txt")
+    out = {}
+    if os.path.exists(p):
+        for ln in open(p):
+            name = ln.split("#")[0].strip().lower()
+            if name:
+                toks = tuple(t for t in SPLIT.split(name) if t)
+                if len(_strip(toks)) >= 2:
+                    out[_strip(toks)] = " ".join(toks)
+    return out
+
+
+def match_stopword(slug):
+    """A stopword_names.txt name found in a slug with stop words removed from
+    both ("top-of-giant", "top-giant"), or None."""
+    names = _stopword_names()
+    if not names:
+        return None
+    toks = _strip([t for t in SPLIT.split(slug.replace("'", "")) if t])
+    maxlen = max(len(k) for k in names)
+    for n in range(min(maxlen, len(toks)), 1, -1):
+        for i in range(len(toks) - n + 1):
+            t = tuple(toks[i:i + n])
+            if t in names:
+                return names[t]
+    return None
+
+
 @lru_cache(maxsize=1)
 def _cached(index_path):
     names = load(index_path)
@@ -109,4 +151,4 @@ def match(slug, index_path):
             t = tuple(toks[i:i + n])
             if t in names:
                 return " ".join(t)
-    return None
+    return match_stopword(slug)

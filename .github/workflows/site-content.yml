@@ -35,6 +35,10 @@ on:
         description: "Optional: keep only sites listed in this repo file"
         default: ""
         required: false
+      stopword_names_only:
+        description: "Keep only URLs that name a hike once stop words are removed (data/gazetteer/stopword_names.txt), to re-run old harvests for them"
+        type: boolean
+        default: false
       max_per_site:
         description: "At most this many pages per site (0 = no cap)"
         default: "0"
@@ -88,6 +92,7 @@ jobs:
           [ ${#skip[@]} -gt 0 ] && extra+=(--skip-urls "${skip[@]}")
           [ -f index.db ] && extra+=(--index index.db)
           ${{ inputs.names_only }} && extra+=(--names-only)
+          ${{ inputs.stopword_names_only }} && extra+=(--stopword-names-only)
           extra+=(--max-per-site "${{ inputs.max_per_site }}")
           python3 -I scripts/filter_candidates.py --candidates 'cand/*/*.tsv.gz' --out-dir filtered ${{ inputs.all_candidates && '--all' || '' }} \
             --max-unmatched "${{ inputs.max_unmatched }}" "${extra[@]}"
@@ -175,6 +180,7 @@ jobs:
           [ ${#skip[@]} -gt 0 ] && extra+=(--skip-urls "${skip[@]}")
           [ -f index.db ] && extra+=(--index index.db)
           ${{ inputs.names_only }} && extra+=(--names-only)
+          ${{ inputs.stopword_names_only }} && extra+=(--stopword-names-only)
           extra+=(--max-per-site "${{ inputs.max_per_site }}")
           python3 -I scripts/filter_candidates.py --candidates 'cand/*/*.tsv.gz' --out-dir filtered ${{ inputs.all_candidates && '--all' || '' }} \
             --max-unmatched "${{ inputs.max_unmatched }}" "${extra[@]}"

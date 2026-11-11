@@ -37,6 +37,9 @@ def main():
     ap.add_argument("--names-only", action="store_true",
                     help="with --index: keep only rows whose URL names a Hiker Atlas hike or landform "
                          "(not just a hiking word): a big harvest's most precise part (DESIGN.md, fix 3)")
+    ap.add_argument("--stopword-names-only", action="store_true",
+                    help="keep only rows whose URL names a hike only once stop words are removed "
+                         "(data/gazetteer/stopword_names.txt: \"top-of-giant\"), to re-run old harvests for them")
     ap.add_argument("--max-per-site", type=int, default=0,
                     help="keep at most this many pages per site (0 = no cap), chosen by URL hash, so one big "
                          "site (a newspaper whose URLs name streets) can't swamp the page pass")
@@ -61,6 +64,10 @@ def main():
             only = {ln.split("\t")[0].strip().split("/")[0].removeprefix("www.")
                     for ln in f if ln.strip() and not ln.startswith("#")}
     def matched(row, col):
+        if args.stopword_names_only:
+            s = slug_text(row[col["url"]])
+            return slugnames.match_stopword(s) is not None and (
+                not args.index or slugnames.match(s, args.index) == slugnames.match_stopword(s))
         if args.names_only:
             if "gear" in col and row[col["gear"]] == "1":
                 return False
@@ -140,8 +147,8 @@ def main():
                 if allowed is not None and not m and row[col["url"]] not in allowed:
                     why["over_unmatched_cap"] += 1
                     continue
-                if not m and (args.names_only or not args.all):
-                    why["no_name_in_url" if args.names_only else "no_slug_match"] += 1
+                if not m and (args.names_only or args.stopword_names_only or not args.all):
+                    why["no_name_in_url" if args.names_only or args.stopword_names_only else "no_slug_match"] += 1
                     continue
                 if capped is not None and row[col["url"]] not in capped:
                     why["over_site_cap"] += 1
