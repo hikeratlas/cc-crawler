@@ -1617,6 +1617,28 @@ missed: list-style titles ("6 Things to Know about the Mt. Tallac Hike"),
 titles that name only a region (Aravaipa, the Pecos), and pages whose hike
 probability is under 0.3.
 
+Published with page passes 3-8 re-extracted (`extract-run-28..33`) and
+combined in `extract-run-34`, with trails.com excluded (a Demand Media
+content farm, ~1,500 rows):
+
+| | extract-run-27 | extract-run-34 |
+|---|---:|---:|
+| hikes | 157,446 | 178,360 |
+| personal sites | 97,213 | 102,852 |
+| organisation sites | 60,184 | 75,417 |
+| recall test, personal, right place | 54 / 117 | 58 / 117 |
+| recall test, organisation, right place | 3 | 5 |
+| recall test, wrong place | 8 | 9 |
+
+Recall gains: Tonquin (inafarawayland), Emory Peak, Mount Cabot, Jacks
+River, Shining Rock and Mt Cammerer (ashevilletrails); Wedgemount
+(twooutliers) now reaches the table but in the wrong place. Most of the
+organisation gain is real (americansouthwest.net +1,981, backpacker.com
++811, digthefalls, socialhiker hike logs), but five generated sites came
+through and are now excluded: naturalatlas.com, mountainzone.com (a stub
+page per summit), trekweather.com, alaska.guide and pixeoapp.com (~1,600
+rows). The table was rebuilt without them (see below).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the

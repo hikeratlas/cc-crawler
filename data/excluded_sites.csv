@@ -80,3 +80,8 @@ australianhiker.com.au,not north america,Australian hiking blog; its Swan Lake e
 americanalpineclub.org,not hiking,Climbing accident reports and journal articles (777 rows in the hike table)
 maxtrails.com,generated,"Generated campground/trail database (""Campgrounds near X Trail""), 1,357 rows in extract-run-16"
 trails.com,generated,"Demand Media content farm: rewritten trail descriptions, one page per trail"
+naturalatlas.com,aggregator,"Map database; mirrors other sites' trail pages under /domains/"
+mountainzone.com,generated,"One stub page per summit (/mountains/<state>/<county>/summits/<peak>/)"
+trekweather.com,generated,Weather pages generated per trail
+alaska.guide,generated,"Generated place database (mountains, trails, dams)"
+pixeoapp.com,generated,Photo-spot directory generated per landmark
