@@ -165,14 +165,14 @@ def main():
 
     # Destination features from the hike groups: name -> [(osm id, (lon, lat), kind)]
     feats_by_name = defaultdict(list)
-    group_ids = {}  # any OSM id of a destination group -> all its ids
+    group_ids = {}  # any OSM id of a destination group -> (all its ids, position)
     for g in read_tsv(args.groups):
         if g["group_kind"] != "destination" or not g["lat"]:
             continue
         ids = [g["osm_id"]] + [x for x in re.split(r"[;\s]+", g.get("merged_osm_ids") or "") if x]
         feats_by_name[key_name(g["name"])].append((ids, (float(g["lon"]), float(g["lat"])), g["feature_kind"]))
         for x in ids:
-            group_ids[x] = ids
+            group_ids[x] = (ids, (float(g["lon"]), float(g["lat"])))
 
     # Pages by title destination and by title trail.
     # The place index includes the curated routes themselves (kind "hike",
@@ -202,9 +202,13 @@ def main():
             # name and position: the same place can be two OSM features
             # (Panorama Ridge is a viewpoint node in routes and a peak in the
             # place index).
-            hits = [group_ids[x] for x in rt["dest_ids"] if x in group_ids]
+            # Within the same distance as a name match: a route to the shore
+            # of Lake Superior or Lake Tahoe isn't a hike to the lake that
+            # every page naming it is about.
+            near = DEST_NEAR_M.get(rt["dest_kind"], DEST_NEAR_M["default"])
+            hits = [group_ids[x][0] for x in rt["dest_ids"]
+                    if x in group_ids and metres(group_ids[x][1], rt["dest_at"]) <= near]
             if not hits:
-                near = DEST_NEAR_M.get(rt["dest_kind"], DEST_NEAR_M["default"])
                 hits = [ids for ids, p, _ in feats_by_name.get(key_name(rt["dest"]), [])
                         if metres(p, rt["dest_at"]) <= near]
             if hits:
