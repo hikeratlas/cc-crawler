@@ -1860,6 +1860,18 @@ errors) or too small. Copyright: these are the authors' photos, shown as
 small linked thumbnails (as search engines do); removal requests go in
 `data/excluded_urls.csv`.
 
+Full run (`page-images-run-2`, picking from run 1's fetch of all 190,444 hike
+pages): 60,538 of 188,607 pages with names have a photo (captions 27,842,
+alt 25,549, file names 4,501, titles 2,646). In the first north-america
+routes build with photos (basemap 43196446101, `route-inputs-run-6`), the
+reports bundle had 18,439 photos. 13,547 became thumbnails. Failures: HTTP
+errors 2,604 (gone), unreachable 818, too small 568, not an image 347, odd
+aspect 300, blank 155. 18,793 report entries show one, e.g. 6 of the 8
+Panorama Ridge reports. The thumbnail step took 50 minutes (merge-job limit
+60); later builds fetch only new photos. Run 1's pick used code from before
+PR #77 and happened not to hit the malformed og:image; run 2 is the
+reference.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
