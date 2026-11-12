@@ -1793,6 +1793,15 @@ Siyeh Pass x3, Top of the Giant (Sleeping Giant, travisnovitsky), Art Loeb.
 On 65k pages of page-pass-run-9: 111 gain a location, 5 lose one, 130 move
 >25 km, mostly within a state.
 
+Published as `extract-run-49`: page passes 3-11 re-extracted one at a time
+(`extract-run-40..48`), then combined with page-pass-run-12. 190,444 hikes
+(+2,038 over extract-run-39), 111,713 personal, 95,943 with a trail (from
+92,965). Recall: 65 of 117 personal (from 61), 8 organisation (from 5), 7 in
+the wrong place (from 10). New finds: Top of the Giant x5 (thelostgirlsguide,
+hikebiketravel, travisnovitsky, northernontario.travel x2) and Siyeh Pass
+(followthatnerd, glacierguides); hike734's Siyeh report now reaches the
+table, but in the wrong place.
+
 ### Route links in production (2026-11-11)
 
 basemap's routes build links trip reports to the routes it has just
