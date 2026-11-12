@@ -12,11 +12,15 @@ on:
     inputs:
       extract_release:
         description: "Extract release with the combined hike table (hikes.tsv.gz, hike_groups.tsv.gz)"
-        default: "extract-run-35"
+        default: "extract-run-49"
         required: true
+      page_images_release:
+        description: "Optional: page-images release whose page_images.tsv.gz (each page's photo) goes along"
+        default: ""
+        required: false
       extracted_releases:
         description: "Comma-separated extract releases whose extracted-*.jsonl.gz to read (the combined one and every release it combined)"
-        default: "extract-run-35,extract-run-28,extract-run-29,extract-run-30,extract-run-31,extract-run-32,extract-run-33"
+        default: "extract-run-49,extract-run-48,extract-run-47,extract-run-46,extract-run-45,extract-run-44,extract-run-43,extract-run-42,extract-run-41,extract-run-40"
         required: true
 
 permissions:
@@ -33,6 +37,9 @@ jobs:
         run: |
           mkdir -p out prev
           gh release download "${{ inputs.extract_release }}" --dir out --pattern hikes.tsv.gz --pattern hike_groups.tsv.gz
+          if [ -n "${{ inputs.page_images_release }}" ]; then
+            gh release download "${{ inputs.page_images_release }}" --dir out --pattern page_images.tsv.gz
+          fi
           for rel in $(echo "${{ inputs.extracted_releases }}" | tr ',' ' '); do
             gh release download "$rel" --pattern 'extracted-*.jsonl.gz' --dir "prev/$rel"
           done
@@ -48,5 +55,6 @@ jobs:
           tag="route-inputs-run-${{ github.run_number }}"
           # No --target: see extract.yml.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Route inputs (run ${{ github.run_number }})" \
-            --notes "Inputs for linking trip reports to curated routes in hikeratlas/basemap's routes build, from ${{ inputs.extract_release }}: hikes.tsv.gz, hike_groups.tsv.gz and route_features.jsonl.gz (the places each page mentions). See scripts/route_links.py. Built from commit $GITHUB_SHA."
+            --notes "Inputs for linking trip reports to curated routes in hikeratlas/basemap's routes build, from ${{ inputs.extract_release }}: hikes.tsv.gz, hike_groups.tsv.gz and route_features.jsonl.gz (the places each page mentions), plus page_images.tsv.gz (each page's photo) when given. See scripts/route_links.py. Built from commit $GITHUB_SHA."
           gh release upload --clobber "$tag" out/hikes.tsv.gz out/hike_groups.tsv.gz out/route_features.jsonl.gz
+          [ ! -f out/page_images.tsv.gz ] || gh release upload --clobber "$tag" out/page_images.tsv.gz

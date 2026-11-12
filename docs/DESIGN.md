@@ -1825,6 +1825,41 @@ from cc-crawler's main branch at each routes build.
 First bundle (routes bundle 42952774778, `extract-run-35`): 2,373 parks,
 6,139 routes with something to show, 1.8 MB.
 
+## Photos (2026-11-12)
+
+A thumbnail next to a trip report's title: a photo from the page itself
+whose caption names the page's own destination or trail. The page match
+(hike table) plus the caption match keeps out logos, ads, author photos and
+other posts' thumbnails.
+
+- `warcfetch -images` re-fetches a page's WARC record and writes its content
+  images (outside nav, header, footer, aside): src, alt, title, width and
+  height, the caption after it (`<figcaption>`, WordPress `wp-caption-text`,
+  Blogger `tr-caption`), the href of an `<a>` around it, and the page's
+  `og:image`.
+- `scripts/page_images.py pick` keeps an image whose caption, alt, title or
+  file name names one of the page's destinations or trails (2+ words). It
+  skips images linked to another post (related-post thumbnails), tiny ones,
+  logos/icons/share buttons by file name, and maps, prints, signs and gear
+  by their text. It ranks caption > alt/title > file name (never a
+  camera-style "...001"), with a bonus for the page's og:image and for width
+  600+. Workflow `page-images.yml` publishes `page_images.tsv.gz`.
+- `route-inputs.yml` carries it, `route_links.py --images` puts each page's
+  photo in the reports bundle as `img`, and `scripts/thumbs.py` (in basemap's
+  routes build) fetches each photo once and checks it is a photo (300x200+,
+  aspect 0.4-2.6, not blank). It writes a 320 px WebP to
+  `routes/<namespace>/thumbs/<sha1 of the photo URL>.webp` and replaces `img`
+  with `thumb`. Thumbnails already on R2 aren't fetched again.
+
+Prototype, 400 route-linked personal reports: 271 have a content image and
+165 a caption-matched one (captions 89, alt 63, title 5, file 8). In a
+sample of 30, nearly all are photos of the place ("A classic view of Banner
+Peak at Thousand Island Lake", "at the summit: Mary's Rock"). 124 of 156
+fetched photos made thumbnails (~19 KB each); the rest were gone (HTTP
+errors) or too small. Copyright: these are the authors' photos, shown as
+small linked thumbnails (as search engines do); removal requests go in
+`data/excluded_urls.csv`.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the

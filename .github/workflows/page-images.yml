@@ -1,0 +1,136 @@
+# A photo for each hike page (docs/DESIGN.md, "Photos"): re-fetch the hike
+# table's pages from their WARC records with `warcfetch -images`, and keep an
+# image whose caption, alt text, title or file name names the page's own
+# destination or trail (scripts/page_images.py). Publishes page_images.tsv.gz
+# as a page-images-run-<n> release, which route-inputs.yml carries to
+# basemap's routes build (thumbnails: scripts/thumbs.py). Arm runners.
+name: page-images
+
+on:
+  workflow_dispatch:
+    inputs:
+      extract_release:
+        description: "Extract release with the combined hike table (hikes.tsv.gz)"
+        default: "extract-run-49"
+        required: true
+      page_pass_releases:
+        description: "Comma-separated page-pass releases whose pages.tsv.gz hold the hike pages' WARC pointers"
+        default: "page-pass-run-3,page-pass-run-4,page-pass-run-5,page-pass-run-6,page-pass-run-7,page-pass-run-8,page-pass-run-9,page-pass-run-10,page-pass-run-11,page-pass-run-12"
+        required: true
+      partitions:
+        description: "Fetch partitions"
+        default: "16"
+        required: true
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split the hike pages
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.extract_release }}" --pattern hikes.tsv.gz --dir in
+          for r in $(echo "${{ inputs.page_pass_releases }}" | tr ',' ' '); do
+            gh release download "$r" --pattern pages.tsv.gz --dir "pp/$r"; done
+          python3 -I scripts/page_images.py plan --hikes in/hikes.tsv.gz --pages 'pp/*/pages.tsv.gz' \
+            --partitions "${{ inputs.partitions }}" --out-dir plan
+          cp in/hikes.tsv.gz plan/
+          echo "parts=$(python3 -c "import json; print(json.dumps(list(range(${{ inputs.partitions }}))))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: images-plan
+          path: plan/
+          retention-days: 30
+
+  fetch:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: 6   # free plan: 20 concurrent jobs shared with other repos (DESIGN.md)
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: images-plan
+          path: plan/
+      - name: Build
+        run: go build -o warcfetch ./cmd/warcfetch
+      - name: Fetch pages' images from WARC files
+        run: |
+          mkdir -p out
+          ./warcfetch -in "plan/part-${{ matrix.part }}.tsv" -out "out/images-part-${{ matrix.part }}.jsonl" -images -concurrency 4
+          gzip out/*.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-images-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  pick:
+    needs: [plan, fetch]
+    if: ${{ !cancelled() }}   # pick from whichever partitions succeeded
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for every partition's artifact to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          want=$(echo '${{ needs.plan.outputs.parts }}' | jq length)
+          for i in $(seq 1 30); do
+            have=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.name | startswith("page-images-"))] | length')
+            echo "artifacts listed: $have of $want"
+            [ "$have" -ge "$want" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::only $have of $want partitions uploaded; picking from those"
+      - uses: actions/download-artifact@v4
+        with:
+          name: images-plan
+          path: plan/
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: page-images-*
+          path: fetched/
+          merge-multiple: true
+      - name: Pick each page's photo
+        run: |
+          mkdir -p out
+          python3 -I scripts/page_images.py pick --hikes plan/hikes.tsv.gz --pages 'fetched/*.jsonl.gz' \
+            --out out/page_images.tsv.gz 2>&1 | tee out/report.txt
+          cat out/report.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-images-report
+          path: out/
+          retention-days: 30
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="page-images-run-${{ github.run_number }}"
+          # No --target: see extract.yml.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Page images (run ${{ github.run_number }})" \
+            --notes "A photo for each hike page in ${{ inputs.extract_release }}: an image whose caption, alt text, title or file name names the page's own destination or trail. page_images.tsv.gz: url, image, source, label, og. See scripts/page_images.py. Built from commit $GITHUB_SHA."
+          gh release upload --clobber "$tag" out/page_images.tsv.gz
