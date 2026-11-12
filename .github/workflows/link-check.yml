@@ -1,0 +1,129 @@
+# Which hike pages are still on the live web (hikeratlas/cc-crawler#79;
+# scripts/link_check.py; docs/DESIGN.md "Stale pages"). Checks every page in
+# the hike table, at most 2 requests per site at a time, and publishes
+# link_status.tsv.gz as a link-status-run-<n> release: ok, http_only, stale
+# (gone, parked, private, taken over...) or unknown (blocked). Connection
+# and certificate failures count as stale only when the previous run saw
+# them too, a week or more earlier. route-inputs.yml carries the newest
+# status to basemap's routes build, which leaves stale pages out.
+name: link-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      extract_release:
+        description: "Extract release with the combined hike table (hikes.tsv.gz)"
+        default: "extract-run-49"
+        required: true
+      partitions:
+        description: "Check partitions (each site in one)"
+        default: "8"
+        required: true
+  schedule:
+    - cron: "17 9 3 * *"   # monthly; pages keep going away
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      parts: ${{ steps.plan.outputs.parts }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Split the hike pages by site
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rel="${{ inputs.extract_release }}"
+          # Scheduled runs: the newest extract release with a hike table.
+          [ -n "$rel" ] || rel=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name | startswith("extract-run-")) | select(any(.assets[]; .name == "hikes.tsv.gz"))][0].tag_name')
+          echo "hike table: $rel"
+          gh release download "$rel" --pattern hikes.tsv.gz --dir in
+          parts="${{ inputs.partitions }}"; parts=${parts:-8}
+          python3 -I scripts/link_check.py plan --hikes in/hikes.tsv.gz --partitions "$parts" --out-dir plan
+          echo "parts=$(python3 -c "import json; print(json.dumps(list(range($parts))))")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: links-plan
+          path: plan/
+          retention-days: 30
+
+  check:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 6   # free plan: 20 concurrent jobs shared with other repos (DESIGN.md)
+      matrix:
+        part: ${{ fromJSON(needs.plan.outputs.parts) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: links-plan
+          path: plan/
+      - name: Check pages on the live web
+        run: |
+          mkdir -p out
+          python3 -I scripts/link_check.py check --urls "plan/part-${{ matrix.part }}.txt" \
+            --out "out/links-part-${{ matrix.part }}.tsv.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: links-${{ matrix.part }}
+          path: out/
+          retention-days: 30
+
+  merge:
+    needs: [plan, check]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for every partition's artifact to be listed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          want=$(echo '${{ needs.plan.outputs.parts }}' | jq length)
+          for i in $(seq 1 30); do
+            have=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.name | test("^links-[0-9]+$"))] | length')
+            echo "artifacts listed: $have of $want"
+            [ "$have" -ge "$want" ] && exit 0
+            sleep 10
+          done
+          echo "::warning::only $have of $want partitions uploaded; merging those"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: links-[0-9]*
+          path: parts/
+          merge-multiple: true
+      - name: Merge with the previous run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out prev
+          prev=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name | startswith("link-status-run-"))][0].tag_name // empty')
+          if [ -n "$prev" ]; then gh release download "$prev" --pattern link_status.tsv.gz --dir prev; fi
+          python3 -I scripts/link_check.py merge --parts 'parts/*.tsv.gz' \
+            $( [ -f prev/link_status.tsv.gz ] && echo --previous prev/link_status.tsv.gz ) --out out/link_status.tsv.gz
+          cat out/link_check_report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: links-report
+          path: out/
+          retention-days: 30
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="link-status-run-${{ github.run_number }}"
+          # No --target: see extract.yml.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Link status (run ${{ github.run_number }})" \
+            --notes "Each hike page checked on the live web: ok, http_only, stale (gone, parked, private, taken over, ...) or unknown (blocked). link_status.tsv.gz: url, status, reason, final_url, title, checked, first_failed. See link_check_report.md and scripts/link_check.py. Built from commit $GITHUB_SHA."
+          gh release upload --clobber "$tag" out/link_status.tsv.gz out/link_check_report.md

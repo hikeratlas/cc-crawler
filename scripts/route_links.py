@@ -212,7 +212,7 @@ def write_features(hikes_path, extracted, out):
     print(f"wrote {n:,} pages' features to {out}", file=sys.stderr)
 
 
-def write_bundle(routes, rows, pages, out_dir, images=None):
+def write_bundle(routes, rows, pages, out_dir, images=None, live_url=None):
     """reports.bin: each park's links as gzipped JSON, end to end, located by
     reports.json ({"bundle": "reports.bin", "parks": {<park id>: [offset,
     length]}}), like the routes build's own bundle. A park's JSON maps each
@@ -229,7 +229,7 @@ def write_bundle(routes, rows, pages, out_dir, images=None):
 
     def page(u):
         p = pages[u]
-        e = {"url": u, "title": p["name"], "site": p["site"], "personal": p["site_kind"] == "personal",
+        e = {"url": (live_url or {}).get(u, u), "title": p["name"], "site": p["site"], "personal": p["site_kind"] == "personal",
              "type": p["page_type"], "date": p["date"], "img": images.get(u)}
         return {k: v for k, v in e.items() if v not in ("", None)}
 
@@ -286,6 +286,9 @@ def main():
     ap.add_argument("--out-dir", help="route_links.tsv.gz and route_links_report.md")
     ap.add_argument("--bundle-dir", help="reports.json and reports.bin, for the website (see write_bundle)")
     ap.add_argument("--images", help="page_images.tsv.gz (page_images.py pick): each page's photo, for the bundle")
+    ap.add_argument("--link-status", help="link_status.tsv.gz (link_check.py): pages gone from the live web are "
+                                          "left out, and pages that moved are linked where they are now")
+    ap.add_argument("--drop-http-only", action="store_true", help="with --link-status: leave out pages only on plain http")
     ap.add_argument("--sample-parks", default="Garibaldi,Killarney,Jasper",
                     help="comma-separated park name fragments to list in the report")
     args = ap.parse_args()
@@ -298,8 +301,17 @@ def main():
         if d:
             os.makedirs(d, exist_ok=True)
     excluded = set()
+    live_url = {}  # page -> where it is now (moved with its content, or https)
+    if args.link_status:
+        for r in read_tsv(args.link_status):
+            if r["status"] == "stale" or (args.drop_http_only and r["status"] == "http_only"):
+                excluded.add(r["url"])
+            elif r["status"] == "ok" and r.get("final_url"):
+                live_url[r["url"]] = r["final_url"]
+        print(f"link status: {len(excluded):,} pages left out as gone, {len(live_url):,} linked where they moved",
+              file=sys.stderr)
     if args.exclude_urls and os.path.exists(args.exclude_urls):
-        excluded = {r["url"].strip() for r in csv.DictReader(open(args.exclude_urls)) if r["url"].strip()}
+        excluded |= {r["url"].strip() for r in csv.DictReader(open(args.exclude_urls)) if r["url"].strip()}
 
     routes = load_routes(args.routes_index, args.routes_bundle)
     print(f"{len(routes):,} routes", file=sys.stderr)
@@ -476,7 +488,7 @@ def main():
 
     if args.bundle_dir:
         images = {r["url"]: r["image"] for r in read_tsv(args.images)} if args.images else None
-        write_bundle(routes, rows, pages, args.bundle_dir, images)
+        write_bundle(routes, rows, pages, args.bundle_dir, images, live_url)
     if not args.out_dir:
         return
     cols = ["route_id", "route_key", "park_id", "park", "route_title", "route_type", "match", "url", "title", "site", "site_kind",
