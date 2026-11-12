@@ -1,0 +1,82 @@
+# GPS tracks linked from hike pages (hikeratlas/cc-crawler#82; docs/DESIGN.md
+# "Tracks"; scripts/page_tracks.py). Reads the track links a page-images run's
+# `warcfetch -images` found in each hike page, fetches each linked GPX/KML/KMZ
+# file (or the Internet Archive's copy), Google My Maps map and CalTopo map
+# once, and publishes them with their provenance as a page-tracks-run-<n>
+# release: track_links.tsv.gz (every page's track links, fetchable or not) and
+# tracks.jsonl.gz (each track's simplified lines, length, climb, and where it
+# came from). The fetched bytes stay in the run's tracks-raw artifact, named
+# by sha1. Arm runners.
+name: page-tracks
+
+on:
+  workflow_dispatch:
+    inputs:
+      images_run_id:
+        description: "A page-images run (with warcfetch's track links) whose fetched pages to read"
+        required: true
+      existing_release:
+        description: "Optional: an earlier page-tracks release; its fetched tracks aren't fetched again"
+        default: ""
+        required: false
+      publish:
+        description: "Attach outputs to a GitHub release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  tracks:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the page-images run's fetched pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run="${{ inputs.images_run_id }}"
+          gh run download "$run" -R "$GITHUB_REPOSITORY" -n images-plan -D plan
+          for n in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.name | test("^page-images-[0-9]+$")) | .name'); do
+            gh run download "$run" -R "$GITHUB_REPOSITORY" -n "$n" -D fetched
+          done
+          ls fetched | wc -l
+          if [ -n "${{ inputs.existing_release }}" ]; then
+            gh release download "${{ inputs.existing_release }}" --pattern tracks.jsonl.gz --dir prev; fi
+      - name: Collect track links
+        run: |
+          mkdir -p out
+          python3 -I scripts/page_tracks.py collect --hikes plan/hikes.tsv.gz --pages 'fetched/*.jsonl.gz' \
+            --out out/track_links.tsv.gz 2>&1 | tee out/collect.txt
+      - name: Fetch tracks
+        run: |
+          python3 -I scripts/page_tracks.py fetch --links out/track_links.tsv.gz --out out/tracks.jsonl.gz \
+            --raw-dir raw $( [ -f prev/tracks.jsonl.gz ] && echo --existing prev/tracks.jsonl.gz )
+          { cat out/collect.txt; echo; cat out/page_tracks_report.md; } >> "$GITHUB_STEP_SUMMARY"
+          tar -C raw -czf out/tracks-raw.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tracks-raw
+          path: out/tracks-raw.tar.gz
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        with:
+          name: page-tracks
+          path: |
+            out/track_links.tsv.gz
+            out/tracks.jsonl.gz
+            out/page_tracks_report.md
+          retention-days: 30
+      - name: Publish release assets
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="page-tracks-run-${{ github.run_number }}"
+          # No --target: see extract.yml.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Page tracks (run ${{ github.run_number }})" \
+            --notes "GPS tracks linked from hike pages, read from page-images run ${{ inputs.images_run_id }}. track_links.tsv.gz: page_url, site, kind, link, track_id, text, warc_filename, warc_record_offset. tracks.jsonl.gz: each fetched track's simplified lines with its provenance (pages linking it, URL fetched, live or Internet Archive, time, HTTP status, sha1, the file's creator/name/time). The authors' data: for matching pages to routes, not for redistribution as tracks. See scripts/page_tracks.py. Built from commit $GITHUB_SHA."
+          gh release upload --clobber "$tag" out/track_links.tsv.gz out/tracks.jsonl.gz out/page_tracks_report.md

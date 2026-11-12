@@ -3,7 +3,9 @@
 # image whose caption, alt text, title or file name names the page's own
 # destination or trail (scripts/page_images.py). Publishes page_images.tsv.gz
 # as a page-images-run-<n> release, which route-inputs.yml carries to
-# basemap's routes build (thumbnails: scripts/thumbs.py). Arm runners.
+# basemap's routes build (thumbnails: scripts/thumbs.py). warcfetch also
+# writes each page's GPS track links; page-tracks.yml fetches those from this
+# run's artifacts (docs/DESIGN.md, "Tracks"). Arm runners.
 name: page-images
 
 on:

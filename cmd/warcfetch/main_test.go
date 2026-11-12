@@ -54,3 +54,29 @@ func TestImagesFindsCaptionsAndLinks(t *testing.T) {
 		t.Errorf("wp-caption image: %+v", ims[2])
 	}
 }
+
+func TestTracksFindsTrackLinks(t *testing.T) {
+	doc := `<html><nav><a href="/other/track.gpx">Other</a></nav><article>
+<p>Download the <a href="/files/wasootch-peak.gpx" class="dl">Wasootch Peak GPX</a>.</p>
+<iframe src="https://www.google.com/maps/d/embed?mid=1AbC_d-9&amp;ehbc=2E312F" width="640"></iframe>
+<a href="https://caltopo.com/m/7QH1">map</a> <a href="https://www.strava.com/activities/12345">Strava</a>
+<script>var cfg={"gpx":"https:\/\/x.org\/wp-content\/uploads\/loop.kml"};</script>
+<a href="/files/wasootch-peak.gpx">again</a></article>
+<footer><a href="https://caltopo.com/m/ZZZZ">footer map</a></footer></html>`
+	got := tracks(doc)
+	want := []trackLink{
+		{"gpx_file", "/files/wasootch-peak.gpx", "Wasootch Peak GPX"},
+		{"gpx_file", "https://x.org/wp-content/uploads/loop.kml", ""},
+		{"google_mymaps", "https://www.google.com/maps/d/embed?mid=1AbC_d-9&ehbc=2E312F", ""},
+		{"caltopo", "https://caltopo.com/m/7QH1", "map"},
+		{"strava", "https://www.strava.com/activities/12345", "Strava"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d tracks %+v, want %d", len(got), got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("track %d: got %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
