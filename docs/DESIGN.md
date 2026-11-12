@@ -1872,6 +1872,38 @@ Panorama Ridge reports. The thumbnail step took 50 minutes (merge-job limit
 PR #77 and happened not to hit the malformed og:image; run 2 is the
 reference.
 
+## Stale pages (2026-11-12, #79)
+
+Common Crawl remembers pages that have since gone. `scripts/link_check.py`
+(workflow `link-check.yml`, monthly) checks every hike page on the live web
+and publishes `link_status.tsv.gz` (`link-status-run-<n>`). basemap's routes
+build takes the newest one and `route_links.py --link-status` leaves stale
+pages out, so the next-best page takes the slot, and links pages that moved
+where they are now.
+
+- ok: there. If it moved with its content (same slug on another domain,
+  blogspot to the blog's own domain, http to https), `final_url` says where.
+- http_only: only plain http answers. Kept (old enthusiast sites);
+  `--drop-http-only` leaves them out.
+- stale: 404/410; the domain doesn't resolve; parked or for sale (BrandBucket,
+  Sedo, HugeDomains, "Welcome ... BlueHost", "Account Suspended", Wix/Flywheel
+  unknown-domain pages); private (401, a Google or WordPress sign-in);
+  redirected to another domain without the page's slug (domains taken over
+  by slots and casino sites); redirected to the site's home page; a "page not
+  found" title. Connection, timeout and certificate failures only when the
+  previous run saw them too, a week or more earlier.
+- unknown: blocked (403, 429, 503, Cloudflare challenge, "bot verification"):
+  datacenter IPs are turned away from pages that are fine. Kept. With a
+  browser user agent WordPress.com returned 403 to 19% of a sample; with an
+  honest one (`HikerAtlasLinkCheck`), 3%.
+
+Sample of 300 links shown on the site (from this sandbox, whose proxy fails
+some connections): 211 ok, 5 moved with their content, 9 http-only; stale:
+25 gone, 2 domains gone, 2 taken over (a slots site, a casino), 1 parked
+(BrandBucket), 1 private (Google sign-in), 1 to the home page; unknown: 10
+blocked, 33 connection or timeout failures (proxy) awaiting a second run.
+About 1 in 8 links shown is stale.
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
