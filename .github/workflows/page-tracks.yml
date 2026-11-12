@@ -6,7 +6,9 @@
 # release: track_links.tsv.gz (every page's track links, fetchable or not) and
 # tracks.jsonl.gz (each track's simplified lines, length, climb, and where it
 # came from). The fetched bytes stay in the run's tracks-raw artifact, named
-# by sha1. Arm runners.
+# by sha1. Then matches each page's track to the curated routes it walks and
+# clusters tracks that follow none into missing-route candidates
+# (scripts/track_match.py). Arm runners.
 name: page-tracks
 
 on:
@@ -19,6 +21,10 @@ on:
         description: "Optional: an earlier page-tracks release; its fetched tracks aren't fetched again"
         default: ""
         required: false
+      routes_url:
+        description: "Routes build to match tracks against: the directory holding index.json and its bundle"
+        default: "https://public.hikeratlas.com/routes/north-america"
+        required: true
       publish:
         description: "Attach outputs to a GitHub release"
         type: boolean
@@ -57,6 +63,15 @@ jobs:
             --raw-dir raw $( [ -f prev/tracks.jsonl.gz ] && echo --existing prev/tracks.jsonl.gz )
           { cat out/collect.txt; echo; cat out/page_tracks_report.md; } >> "$GITHUB_STEP_SUMMARY"
           tar -C raw -czf out/tracks-raw.tar.gz .
+      - name: Match tracks to curated routes; missing-route candidates
+        run: |
+          mkdir -p routes
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o routes/index.json "${{ inputs.routes_url }}/index.json"
+          bundle=$(jq -r .bundle routes/index.json)
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o routes/bundle.bin "${{ inputs.routes_url }}/$bundle"
+          python3 -I scripts/track_match.py --tracks out/tracks.jsonl.gz --routes-index routes/index.json \
+            --routes-bundle routes/bundle.bin --hikes plan/hikes.tsv.gz --out-dir out
+          { echo; cat out/track_match_report.md; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: tracks-raw
@@ -69,6 +84,9 @@ jobs:
             out/track_links.tsv.gz
             out/tracks.jsonl.gz
             out/page_tracks_report.md
+            out/track_matches.tsv.gz
+            out/missing_routes.tsv.gz
+            out/track_match_report.md
           retention-days: 30
       - name: Publish release assets
         if: ${{ inputs.publish }}
@@ -79,4 +97,5 @@ jobs:
           # No --target: see extract.yml.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "Page tracks (run ${{ github.run_number }})" \
             --notes "GPS tracks linked from hike pages, read from page-images run ${{ inputs.images_run_id }}. track_links.tsv.gz: page_url, site, kind, link, track_id, text, warc_filename, warc_record_offset. tracks.jsonl.gz: each fetched track's simplified lines with its provenance (pages linking it, URL fetched, live or Internet Archive, time, HTTP status, sha1, the file's creator/name/time). The authors' data: for matching pages to routes, not for redistribution as tracks. See scripts/page_tracks.py. Built from commit $GITHUB_SHA."
-          gh release upload --clobber "$tag" out/track_links.tsv.gz out/tracks.jsonl.gz out/page_tracks_report.md
+          gh release upload --clobber "$tag" out/track_links.tsv.gz out/tracks.jsonl.gz out/page_tracks_report.md \
+            out/track_matches.tsv.gz out/missing_routes.tsv.gz out/track_match_report.md

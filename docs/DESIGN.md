@@ -1951,9 +1951,27 @@ Not every track is a page's own: a map linked from many pages of a site
 Trail Reviews" has 88) is a site-wide map, and matching uses only the line(s)
 near the page's destinations.
 
-Next: matching (a track line within ~100 m of a curated route for most of its
-length confirms the link, in `route_links.py`), and a missing-routes report
-(tracks in a park that follow no curated route, clustered across pages).
+Matching (`scripts/track_match.py`, run by page-tracks.yml against the
+production routes): a track *walks* a route when 80% of the route's line is
+within 100 m of it (*partial* at 50%). A page's own lines only: a track
+linked from at most 3 pages of one site with at most 3 lines, else just the
+lines named after the page's destinations or trails. On the sample (110
+tracks, 93 page-track pairs): 26 walk a curated route (Upper Sycamore,
+Thimble Peak, San Luis Peak, Herman Gulch, Fletcher Canyon), 8 partly, 59
+walk none.
+
+Missing routes: a page's own line of 1-80 km, not a drive ("directions",
+"drive", "road trip", "4WD"...), under 30% of it on any one route, with
+curated routes within 10 km; lines covering 60% of each other cluster.
+`missing_routes.tsv.gz` ranks clusters by sites, then pages. On the sample,
+46 candidates, among them Breakneck Ridge (Hudson Highlands), Camelback
+Mountain (Phoenix), Peralta Trail to Fremont Saddle (Superstitions), Tanque
+Verde Falls, Mount St. Helens, Wasootch Peak, Fehr Lake: well-known hikes in
+parks that have other curated routes.
+
+Next: `route_links.py` takes `track_matches.tsv.gz` as the strongest
+evidence (a page whose track walks a route links to it even without naming
+its destination), once the full run's matches are checked.
 
 ## Runner budget
 
