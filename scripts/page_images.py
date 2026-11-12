@@ -55,6 +55,15 @@ def read_tsv(path):
         yield from csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE)
 
 
+def join(base, ref):
+    """urljoin that gives "" for a malformed URL (an og:image of
+    "http://[uploads_url]/..." raises in urllib) instead of failing."""
+    try:
+        return urljoin(base, ref or "")
+    except ValueError:
+        return ""
+
+
 def page_names(row):
     """A hike row's destination and trail names, normalized, of 2+ words."""
     out = set()
@@ -98,19 +107,22 @@ def plan(args):
 def best_image(page, names):
     """(score, image url, source, label, og) of the page's best caption-matched image, or None."""
     url = page["url"]
-    og = urljoin(url, page.get("og_image") or "")
+    og = join(url, page.get("og_image"))
     og_key = re.sub(r"(-\d+x\d+)?(\.\w+)(\?.*)?$", r"\2", og.split("://")[-1]) if og else None
     host = urlparse(url).netloc
     best = None
     for im in page.get("images") or []:
-        src = urljoin(url, im["src"])
+        src = join(url, im["src"])
         if not src.startswith("http") or SKIP_SRC.search(src):
             continue
         if (im.get("width") and im["width"] < 200) or (im.get("height") and im["height"] < 200):
             continue
         link = im.get("link") or ""
-        if link and not IMAGE_EXT.search(link) and urljoin(url, link).split("#")[0] != url.split("#")[0]:
-            lp = urlparse(urljoin(url, link))
+        if link and not IMAGE_EXT.search(link) and join(url, link).split("#")[0] != url.split("#")[0]:
+            try:
+                lp = urlparse(join(url, link))
+            except ValueError:
+                continue
             # A link to the image's own full size (Blogger, Flickr pages of the
             # same photo) is fine; a link to another post isn't.
             if lp.netloc == host or not re.search(r"(blogger|bp\.blogspot|flickr|smugmug|googleusercontent)",

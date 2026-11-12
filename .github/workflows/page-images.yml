@@ -17,6 +17,10 @@ on:
         description: "Comma-separated page-pass releases whose pages.tsv.gz hold the hike pages' WARC pointers"
         default: "page-pass-run-3,page-pass-run-4,page-pass-run-5,page-pass-run-6,page-pass-run-7,page-pass-run-8,page-pass-run-9,page-pass-run-10,page-pass-run-11,page-pass-run-12"
         required: true
+      fetched_run_id:
+        description: "Optional: an earlier page-images run whose fetched images to pick from again (skips planning and fetching)"
+        default: ""
+        required: false
       partitions:
         description: "Fetch partitions"
         default: "16"
@@ -31,6 +35,7 @@ permissions:
 
 jobs:
   plan:
+    if: ${{ inputs.fetched_run_id == '' }}
     runs-on: ubuntu-24.04-arm
     outputs:
       parts: ${{ steps.plan.outputs.parts }}
@@ -87,11 +92,12 @@ jobs:
 
   pick:
     needs: [plan, fetch]
-    if: ${{ !cancelled() }}   # pick from whichever partitions succeeded
+    if: ${{ !cancelled() }}   # pick from whichever partitions succeeded (or from fetched_run_id's)
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - name: Wait for every partition's artifact to be listed
+        if: ${{ inputs.fetched_run_id == '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -105,14 +111,27 @@ jobs:
           done
           echo "::warning::only $have of $want partitions uploaded; picking from those"
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.fetched_run_id == '' }}
         with:
           name: images-plan
           path: plan/
       - uses: actions/download-artifact@v4
+        if: ${{ inputs.fetched_run_id == '' }}
         with:
           pattern: page-images-*
           path: fetched/
           merge-multiple: true
+      - name: Download an earlier run's fetched images
+        if: ${{ inputs.fetched_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.fetched_run_id }}" -R "$GITHUB_REPOSITORY" -n images-plan -D plan
+          for n in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.fetched_run_id }}/artifacts?per_page=100" \
+              --jq '.artifacts[] | select(.name | test("^page-images-[0-9]+$")) | .name'); do
+            gh run download "${{ inputs.fetched_run_id }}" -R "$GITHUB_REPOSITORY" -n "$n" -D fetched
+          done
+          ls fetched | wc -l
       - name: Pick each page's photo
         run: |
           mkdir -p out
