@@ -3,6 +3,9 @@
 // that cmd/sitecdx and scripts/site_report.py carry along: one HTTP range
 // request per record, paced through internal/ccio. For each record it writes
 // one JSON line with the page title, meta description, and readable text.
+// With -images it writes the page's content images instead of its text: each
+// <img> with its alt, title, size, the caption next to it and the link around
+// it, plus the og:image (scripts/page_images.py picks a thumbnail from them).
 //
 // Input is a TSV with a header that includes url, warc_filename,
 // warc_record_offset and warc_record_length; every other column is copied
@@ -35,15 +38,31 @@ type result struct {
 	Description string            `json:"description,omitempty"`
 	Words       int               `json:"words"`
 	Text        string            `json:"text,omitempty"`
+	OGImage     string            `json:"og_image,omitempty"`
+	Images      []image           `json:"images,omitempty"`
 	Error       string            `json:"error,omitempty"`
 	Row         map[string]string `json:"row"`
 }
+
+// image is one <img> in a page's content (-images).
+type image struct {
+	Src     string `json:"src"`
+	Alt     string `json:"alt,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Caption string `json:"caption,omitempty"`
+	Link    string `json:"link,omitempty"` // href of an <a> around it
+	Width   int    `json:"width,omitempty"`
+	Height  int    `json:"height,omitempty"`
+}
+
+var imagesMode bool
 
 func main() {
 	in := flag.String("in", "", "input TSV with url and WARC pointer columns")
 	out := flag.String("out", "pages.jsonl", "output JSON lines")
 	maxText := flag.Int("max-text", 6000, "truncate extracted text to this many characters (0 = no limit)")
 	concurrency := flag.Int("concurrency", 2, "parallel range requests (all share one adaptive pacer)")
+	flag.BoolVar(&imagesMode, "images", false, "write each page's content images (with captions) instead of its text")
 	flag.Parse()
 
 	f, err := os.Open(*in)
@@ -139,6 +158,10 @@ func fetch(row map[string]string, maxText int) result {
 	}
 	r.Title, r.Description, r.Text = extract(string(body))
 	r.Words = len(strings.Fields(r.Text))
+	if imagesMode {
+		r.OGImage, r.Images = images(string(body))
+		r.Text = ""
+	}
 	if maxText > 0 && len(r.Text) > maxText {
 		r.Text = r.Text[:maxText]
 	}
@@ -211,4 +234,64 @@ func must(err error) {
 	if err != nil {
 		log.Fatal(fmt.Sprint(err))
 	}
+}
+
+var (
+	reOG       = regexp.MustCompile(`(?is)<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']`)
+	reOG2      = regexp.MustCompile(`(?is)<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:image["']`)
+	reImg      = regexp.MustCompile(`(?is)<img\b[^>]*>`)
+	reAOpen    = regexp.MustCompile(`(?is)<a\b[^>]*>`)
+	reCapAfter = regexp.MustCompile(`(?is)^.{0,600}?<(figcaption|[a-z0-9]+[^>]*class=["'][^"']*caption[^"']*["'])[^>]*>(.*?)</`)
+	reDropImg  = regexp.MustCompile(`(?is)<(script|style|noscript|nav|header|footer|aside|form|template)\b.*?</(?:script|style|noscript|nav|header|footer|aside|form|template)>`)
+)
+
+func attr(tag, name string) string {
+	re := regexp.MustCompile(`(?is)\b` + name + `\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+	m := re.FindStringSubmatch(tag)
+	if m == nil {
+		return ""
+	}
+	return clean(html.UnescapeString(m[1] + m[2]))
+}
+
+// images returns a page's og:image and its content images: <img> outside
+// navigation, headers, footers and sidebars, with the caption that follows
+// within a few hundred characters (<figcaption>, WordPress's wp-caption-text,
+// Blogger's tr-caption) and the href of an <a> that wraps it.
+func images(doc string) (og string, out []image) {
+	if m := reOG.FindStringSubmatch(doc); m != nil {
+		og = html.UnescapeString(m[1])
+	} else if m := reOG2.FindStringSubmatch(doc); m != nil {
+		og = html.UnescapeString(m[1])
+	}
+	body := reDropImg.ReplaceAllString(doc, " ")
+	for _, loc := range reImg.FindAllStringIndex(body, -1) {
+		tag := body[loc[0]:loc[1]]
+		src := attr(tag, "data-src")
+		if src == "" {
+			src = attr(tag, "src")
+		}
+		if src == "" || strings.HasPrefix(src, "data:") {
+			continue
+		}
+		im := image{Src: src, Alt: attr(tag, "alt"), Title: attr(tag, "title")}
+		im.Width, _ = strconv.Atoi(attr(tag, "width"))
+		im.Height, _ = strconv.Atoi(attr(tag, "height"))
+		// The <a> around it: the last one opened before it and not closed since.
+		before := body[max(0, loc[0]-2000):loc[0]]
+		if as := reAOpen.FindAllStringIndex(before, -1); len(as) > 0 {
+			last := as[len(as)-1]
+			if !strings.Contains(strings.ToLower(before[last[1]:]), "</a>") {
+				im.Link = attr(before[last[0]:last[1]], "href")
+			}
+		}
+		if m := reCapAfter.FindStringSubmatch(body[loc[1]:min(len(body), loc[1]+1500)]); m != nil {
+			im.Caption = clean(html.UnescapeString(reTag.ReplaceAllString(m[2], " ")))
+		}
+		out = append(out, im)
+		if len(out) == 80 {
+			break
+		}
+	}
+	return
 }

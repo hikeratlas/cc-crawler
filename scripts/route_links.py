@@ -212,7 +212,7 @@ def write_features(hikes_path, extracted, out):
     print(f"wrote {n:,} pages' features to {out}", file=sys.stderr)
 
 
-def write_bundle(routes, rows, pages, out_dir):
+def write_bundle(routes, rows, pages, out_dir, images=None):
     """reports.bin: each park's links as gzipped JSON, end to end, located by
     reports.json ({"bundle": "reports.bin", "parks": {<park id>: [offset,
     length]}}), like the routes build's own bundle. A park's JSON maps each
@@ -220,7 +220,9 @@ def write_bundle(routes, rows, pages, out_dir):
       {"reports": [...], "about": [...]}
     where reports follow the route and about pages are about its destination
     (way up unknown, or another way). Each page is {url, title, site,
-    personal, type, date}, with empty fields left out."""
+    personal, type, date, img}, with empty fields left out; img is the page's
+    photo (page_images.py), which scripts/thumbs.py turns into "thumb"."""
+    images = images or {}
     by_route = defaultdict(lambda: {"route": [], "destination": []})
     for i, u, m, _ in rows:
         by_route[i][m].append(u)
@@ -228,7 +230,7 @@ def write_bundle(routes, rows, pages, out_dir):
     def page(u):
         p = pages[u]
         e = {"url": u, "title": p["name"], "site": p["site"], "personal": p["site_kind"] == "personal",
-             "type": p["page_type"], "date": p["date"]}
+             "type": p["page_type"], "date": p["date"], "img": images.get(u)}
         return {k: v for k, v in e.items() if v not in ("", None)}
 
     def pick(urls, n):
@@ -283,6 +285,7 @@ def main():
     ap.add_argument("--exclude-urls", default=EXCLUDED_URLS_CSV, help="CSV of pages never to link (url,reason)")
     ap.add_argument("--out-dir", help="route_links.tsv.gz and route_links_report.md")
     ap.add_argument("--bundle-dir", help="reports.json and reports.bin, for the website (see write_bundle)")
+    ap.add_argument("--images", help="page_images.tsv.gz (page_images.py pick): each page's photo, for the bundle")
     ap.add_argument("--sample-parks", default="Garibaldi,Killarney,Jasper",
                     help="comma-separated park name fragments to list in the report")
     args = ap.parse_args()
@@ -472,7 +475,8 @@ def main():
                     rows.append((i, u, "destination", ev))
 
     if args.bundle_dir:
-        write_bundle(routes, rows, pages, args.bundle_dir)
+        images = {r["url"]: r["image"] for r in read_tsv(args.images)} if args.images else None
+        write_bundle(routes, rows, pages, args.bundle_dir, images)
     if not args.out_dir:
         return
     cols = ["route_id", "route_key", "park_id", "park", "route_title", "route_type", "match", "url", "title", "site", "site_kind",
