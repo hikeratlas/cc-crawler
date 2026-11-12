@@ -5,7 +5,9 @@
 // one JSON line with the page title, meta description, and readable text.
 // With -images it writes the page's content images instead of its text: each
 // <img> with its alt, title, size, the caption next to it and the link around
-// it, plus the og:image (scripts/page_images.py picks a thumbnail from them).
+// it, plus the og:image (scripts/page_images.py picks a thumbnail from them),
+// and the page's GPS track links: GPX/KML/KMZ files, Google My Maps, CalTopo
+// and other track sites (scripts/page_tracks.py fetches them).
 //
 // Input is a TSV with a header that includes url, warc_filename,
 // warc_record_offset and warc_record_length; every other column is copied
@@ -40,6 +42,7 @@ type result struct {
 	Text        string            `json:"text,omitempty"`
 	OGImage     string            `json:"og_image,omitempty"`
 	Images      []image           `json:"images,omitempty"`
+	Tracks      []trackLink       `json:"tracks,omitempty"`
 	Error       string            `json:"error,omitempty"`
 	Row         map[string]string `json:"row"`
 }
@@ -53,6 +56,13 @@ type image struct {
 	Link    string `json:"link,omitempty"` // href of an <a> around it
 	Width   int    `json:"width,omitempty"`
 	Height  int    `json:"height,omitempty"`
+}
+
+// trackLink is a link to a GPS track in a page's content (-images).
+type trackLink struct {
+	Kind string `json:"kind"`           // gpx_file, google_mymaps, caltopo, gaia, strava, ...
+	URL  string `json:"url"`            // as written in the page (may be relative)
+	Text string `json:"text,omitempty"` // the link's text, when it is an <a>
 }
 
 var imagesMode bool
@@ -160,6 +170,7 @@ func fetch(row map[string]string, maxText int) result {
 	r.Words = len(strings.Fields(r.Text))
 	if imagesMode {
 		r.OGImage, r.Images = images(string(body))
+		r.Tracks = tracks(string(body))
 		r.Text = ""
 	}
 	if maxText > 0 && len(r.Text) > maxText {
@@ -291,6 +302,69 @@ func images(doc string) (og string, out []image) {
 		out = append(out, im)
 		if len(out) == 80 {
 			break
+		}
+	}
+	return
+}
+
+// Track links, by kind. A file link must end in .gpx/.kml/.kmz (a query
+// string may follow); the sites' patterns name one map, track or route.
+var trackPats = []struct {
+	kind string
+	re   *regexp.Regexp
+}{
+	{"gpx_file", regexp.MustCompile(`(?i)(?:href|src|data-[a-z-]+|gpx|url|file)\\?["']?\s*[=:]\s*\\?["']([^"'<>\s]+?\.(?:gpx|kml|kmz)(?:\?[^"'<>\s]*)?)\\?["']`)},
+	{"google_mymaps", regexp.MustCompile(`(?i)(https?:)?//(?:www\.)?google\.[a-z.]+/maps/d/(?:u/\d+/)?(?:viewer|embed|edit|kml)\?[^"'<>\s]*mid=[A-Za-z0-9_-]+[^"'<>\s]*`)},
+	{"caltopo", regexp.MustCompile(`(?i)(https?:)?//(?:www\.)?caltopo\.com/m/[A-Za-z0-9]+`)},
+	{"gaia", regexp.MustCompile(`(?i)https?://(?:www\.)?gaiagps\.com/(?:public|map|hike|datasummary|track|route)/[^"'<>\s]+`)},
+	{"strava", regexp.MustCompile(`(?i)https?://(?:www\.)?strava\.com/(?:activities|routes)/\d+`)},
+	{"ridewithgps", regexp.MustCompile(`(?i)https?://(?:www\.)?ridewithgps\.com/(?:routes|trips)/\d+`)},
+	{"alltrails", regexp.MustCompile(`(?i)https?://(?:www\.)?alltrails\.com/(?:explore/)?(?:recording|map)/[^"'<>\s?#]+`)},
+	{"garmin", regexp.MustCompile(`(?i)https?://connect\.garmin\.com/(?:modern/)?(?:activity|course)/\d+`)},
+	{"wikiloc", regexp.MustCompile(`(?i)https?://(?:www\.)?wikiloc\.com/[a-z-]+-trails/[^"'<>\s?#]+`)},
+	{"outdooractive", regexp.MustCompile(`(?i)https?://(?:www\.)?outdooractive\.com/[a-z]{2}/(?:route|track)/[^"'<>\s?#]+`)},
+	{"mapmy", regexp.MustCompile(`(?i)https?://(?:www\.)?mapmy(?:hike|run|walk|ride|fitness)\.com/(?:[a-z]{2}/)?routes/view/\d+`)},
+	{"plotaroute", regexp.MustCompile(`(?i)https?://(?:www\.)?plotaroute\.com/route/\d+`)},
+	{"trailforks", regexp.MustCompile(`(?i)https?://(?:www\.)?trailforks\.com/route/[^"'<>\s?#]+`)},
+}
+
+var (
+	reDropTrack = regexp.MustCompile(`(?is)<(nav|header|footer|aside)\b.*?</(?:nav|header|footer|aside)>`)
+	reAClose    = regexp.MustCompile(`(?is)^[^>]*>(.{0,300}?)</a>`)
+)
+
+// tracks returns a page's GPS track links, outside navigation, headers,
+// footers and sidebars (which link other posts' tracks), in page order,
+// each once.
+func tracks(doc string) (out []trackLink) {
+	body := reDropTrack.ReplaceAllString(doc, " ")
+	seen := map[string]bool{}
+	for _, p := range trackPats {
+		for _, m := range p.re.FindAllStringSubmatchIndex(body, -1) {
+			s, e := m[0], m[1]
+			if p.kind == "gpx_file" {
+				s, e = m[2], m[3]
+			}
+			u := html.UnescapeString(strings.ReplaceAll(body[s:e], `\/`, "/"))
+			if strings.HasPrefix(u, "//") {
+				u = "https:" + u
+			}
+			if seen[u] {
+				continue
+			}
+			seen[u] = true
+			t := trackLink{Kind: p.kind, URL: u}
+			// Link text: the match sits inside an <a ...> tag's attributes.
+			before := body[max(0, s-1000):s]
+			if i := strings.LastIndex(strings.ToLower(before), "<a "); i >= 0 && !strings.Contains(before[i:], ">") {
+				if c := reAClose.FindStringSubmatch(body[e:min(len(body), e+1500)]); c != nil {
+					t.Text = clean(html.UnescapeString(reTag.ReplaceAllString(c[1], " ")))
+				}
+			}
+			out = append(out, t)
+			if len(out) == 40 {
+				return
+			}
 		}
 	}
 	return

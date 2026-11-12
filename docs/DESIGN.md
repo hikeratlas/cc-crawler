@@ -1904,6 +1904,57 @@ some connections): 211 ok, 5 moved with their content, 9 http-only; stale:
 blocked, 33 connection or timeout failures (proxy) awaiting a second run.
 About 1 in 8 links shown is stale.
 
+## Tracks (2026-11-12, #82)
+
+Hike pages link their GPS tracks, and a track says which way a page went far
+better than its place names: it can confirm (or rule out) a route link, link
+pages that name nothing we recognise, and tracks that follow no curated route
+are routes Hiker Atlas is missing.
+
+Sample of 2,000 random hike pages: about 1 in 10 links a track (191), about 1
+in 20 a track we can fetch. Google My Maps 3.9% of pages (the KML export,
+`maps/d/kml?mid=<id>&forcekml=1`, gave lines for 7 of 8), linked GPX/KML/KMZ
+files 1.7% (about half still live; the rest from the Internet Archive where it
+kept them), CalTopo 1.2% (its public map API, 6 of 6). Not fetched: Gaia
+(0.9%), Strava and Garmin Connect (0.8%; need an account), AllTrails (mostly
+links to its trail pages, and its terms bar scraping); their links are kept.
+
+- `warcfetch -images` also writes each page's track links (`tracks`: kind,
+  URL, link text), outside navigation, headers, footers and sidebars: a
+  sidebar's site-wide map isn't the page's track. So a page-images run
+  collects them along with photos.
+- `scripts/page_tracks.py collect` -> `track_links.tsv.gz`: one row per
+  (page, track), with a stable `track_id` (`mymaps:<mid>` for the viewer,
+  embed and edit links of one map; `caltopo:<id>`; `file:<url>`; a map viewer
+  showing a file is the file).
+- `page_tracks.py fetch` -> `tracks.jsonl.gz`: each fetchable track once (2
+  requests per host at a time), parsed into lines (GPX tracks and routes, KML
+  LineStrings and gx:Tracks, KMZ, CalTopo features), each simplified to 10 m
+  with its point count, length, climb (only when the file has elevations) and
+  bounding box. On the sample: 110 of 146 fetchable tracks, 819 lines.
+- `page-tracks.yml` runs both from a page-images run and publishes a
+  page-tracks-run-<n> release; the raw bytes stay in the run's `tracks-raw`
+  artifact (90 days), named by sha1.
+
+Provenance. Every track record says where it came from and how we got it:
+`pages` (each page linking it: URL, site, the link as written, its text, the
+crawl and WARC record we read it in), `link`, `fetch_url`, `via` (live or
+wayback) and `archived_at` (the snapshot's time), `fetched_at`,
+`http_status`, `final_url`, `content_type`, `bytes`, `sha1` (of the bytes, as
+kept in tracks-raw), `format`, and the file's own `creator` (device or app:
+"eTrex 20", "CALTOPO", "StravaGPX"), `name` and `time`. Failures are kept
+too, with `error`. Tracks are their authors' data: used to match pages to
+routes and find missing routes, never shown or redistributed as tracks.
+
+Not every track is a page's own: a map linked from many pages of a site
+(`n_pages`, `n_sites`) or with many lines (`n_lines_in_file`; "Trailspotting
+Trail Reviews" has 88) is a site-wide map, and matching uses only the line(s)
+near the page's destinations.
+
+Next: matching (a track line within ~100 m of a curated route for most of its
+length confirms the link, in `route_links.py`), and a missing-routes report
+(tracks in a park that follow no curated route, clustered across pages).
+
 ## Runner budget
 
 The account is on GitHub's free plan: **20 concurrent jobs, shared with the
