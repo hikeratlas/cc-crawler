@@ -41,6 +41,7 @@ import os
 import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -127,7 +128,12 @@ def collect(args):
 
 # --- fetching ---------------------------------------------------------------
 
+# At most 2 requests at a time per host; 4 for the map services, which serve
+# most tracks and many sites' maps.
+BIG_HOSTS = {"www.google.com": 4, "caltopo.com": 4, "archive.org": 3, "web.archive.org": 3}
 _locks = collections.defaultdict(lambda: threading.Semaphore(2))
+for _h, _n in BIG_HOSTS.items():
+    _locks[_h] = threading.Semaphore(_n)
 
 
 def get(u, timeout=40):
@@ -382,7 +388,13 @@ def fetch(args):
     if args.raw_dir:
         os.makedirs(args.raw_dir, exist_ok=True)
 
+    deadline = time.monotonic() + args.max_minutes * 60 if args.max_minutes else None
+
     def job(tid):
+        if deadline and time.monotonic() > deadline:
+            r = first_link[tid]
+            return {"track_id": tid, "kind": r["kind"], "link": r["link"], "fetch_url": "", "via": "",
+                    "error": "not fetched: out of time (the next run with --existing fetches it)", "lines": []}
         r = first_link[tid]
         _, fu = track_id(r["kind"], r["link"])
         return fetch_one(tid, r["kind"], r["link"], fu, args.raw_dir)
@@ -442,6 +454,8 @@ def main():
     f.add_argument("--raw-dir", help="keep each fetched file here, named by its sha1")
     f.add_argument("--existing", help="an earlier tracks.jsonl.gz: tracks fetched then aren't fetched again")
     f.add_argument("--workers", type=int, default=16)
+    f.add_argument("--max-minutes", type=float, default=0,
+                   help="stop fetching after this long; the rest are written as not fetched, for --existing next time")
     f.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
     collect(args) if args.cmd == "collect" else fetch(args)
