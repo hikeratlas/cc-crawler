@@ -1922,6 +1922,16 @@ now puts the biggest sites first into the emptiest partition and
 round-robins sites within each; merge keeps the previous status of pages a
 run didn't reach.
 
+Duplicate hosts (2026-11-13): Common Crawl keeps a page once per host that
+served it, and cPanel sites answer on mail. and ftp. too (pahikes.com had
+most of its pages three times: ftp., mail., www.). `hikes.py` now counts
+www./mail./ftp./webmail./cpanel./webdisk./m./mobile./amp. and /index.php
+variants as one page, keeps the site's own host over a service or mobile
+subdomain (then https, then the shortest URL), and moves pages known only
+under mail./ftp. to the host the site's other pages use. On extract-run-49's
+table: 516 fewer rows (190,444 -> 189,928), 86 pages moved to the site's own
+host.
+
 ## Tracks (2026-11-12, #82)
 
 Hike pages link their GPS tracks, and a track says which way a page went far
