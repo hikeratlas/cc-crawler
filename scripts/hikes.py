@@ -214,10 +214,48 @@ fbclid gclid ref hilit jan feb mar apr may jun jul aug sep oct nov dec showcomme
 FORUM_TOPIC = re.compile(r"/(?:viewtopic|showthread)\.php\?")
 
 
+# Host aliases: the same site answers as www., mail., ftp. (cPanel's service
+# subdomains), m. (mobile)... and Common Crawl keeps each as its own page.
+HOST_ALIAS = re.compile(r"^https?://(?:(?:www\d?|ftp|mail|webmail|cpanel|webdisk|m|mobile|amp)\.(?=[^/]+\.[^/.]+(?:[/:?#]|$)))?",
+                        re.I)
+# Service subdomains are never a site's own address.
+SERVICE_HOST = re.compile(r"^(https?://)(?:ftp|mail|webmail|cpanel|webdisk)\.(?=[^/]+\.[^/.]+(?:[/:?#]|$))", re.I)
+
+
 def url_key(u):
-    """http/https, www., /index.php and a trailing slash don't make a different post."""
-    u = re.sub(r"^https?://(www\.)?", "", u.strip(), flags=re.I)
-    return u.replace("/index.php/", "/").rstrip("/").lower()
+    """http/https, www./mail./ftp./m., /index.php and a trailing slash don't make a different post."""
+    u = HOST_ALIAS.sub("", u.strip())
+    return u.replace("/index.php/", "/").replace("/index.php?", "?").rstrip("/").lower()
+
+
+def url_pref(u):
+    """Which copy of a page to keep: the site's own host over a service
+    subdomain (mail., ftp.) or mobile one, https, then the shortest."""
+    host = re.sub(r"^https?://", "", u.lower()).split("/")[0]
+    return (bool(SERVICE_HOST.match(u)), host.startswith(("m.", "mobile.", "amp.")), not u.lower().startswith("https"),
+            "/index.php" in u.lower(), len(u))
+
+
+def own_host(rows):
+    """Rewrite pages kept only under a service subdomain (mail.x.com, ftp.x.com)
+    to the host the site's other pages use (or the bare domain): those
+    subdomains serve the site only by accident of the hosting setup."""
+    hosts = defaultdict(Counter)
+    for r in rows:
+        m = re.match(r"^https?://([^/]+)", r["url"], re.I)
+        if m and not SERVICE_HOST.match(r["url"]):
+            hosts[r["site"]][m.group(1).lower()] += 1
+    n = 0
+    for r in rows:
+        m = SERVICE_HOST.match(r["url"])
+        if not m:
+            continue
+        rest = r["url"][m.end():]
+        bare, _, path = rest.partition("/")
+        own = hosts[r["site"]].most_common(1)[0][0] if hosts[r["site"]] else bare.lower()
+        r["url"] = m.group(1) + own + ("/" + path if path or rest.endswith("/") else "")
+        n += 1
+    return n
 
 
 def write_links(rows, groups, out_dir):
@@ -332,7 +370,7 @@ def main():
     ID_SEG = re.compile(r"^(?:i-[a-z0-9]{4,12}|\d+|(?=[a-z]*\d)[a-z0-9]{5,12})(?:\.\w+)?$")
     best = {}
     for row in rows:
-        u, _, qs = unquote(re.sub(r"^https?://(www\.)?", "", row["url"].lower())).partition("?")
+        u, _, qs = unquote(url_key(row["url"])).partition("?")
         u = u.rstrip("/")
         qargs = sorted((k, v) for k, v in parse_qsl(qs, keep_blank_values=True)
                        if k not in VIEW_ARGS and not k.startswith("utm_"))
@@ -346,12 +384,15 @@ def main():
             k = (row["site"], row["name"].lower(), parent)
         else:
             k = ("url", u)
-        if k not in best or len(row["url"]) < len(best[k]["url"]):
+        if k not in best or url_pref(row["url"]) < url_pref(best[k]["url"]):
             best[k] = row
     if len(best) < len(rows):
-        seen["dropped: duplicate page (scheme, escapes, photo pages)"] = len(rows) - len(best)
+        seen["dropped: duplicate page (scheme, host alias, escapes, photo pages)"] = len(rows) - len(best)
         keep = {id(r) for r in best.values()}
         rows = [r for r in rows if id(r) in keep]
+    moved = own_host(rows)
+    if moved:
+        seen["pages moved off a service subdomain (mail., ftp.) to the site's own host"] = moved
     groups = build_groups(rows)
     write_groups(groups, args.out_dir)
     n_links, n_linked = write_links(rows, groups, args.out_dir)
