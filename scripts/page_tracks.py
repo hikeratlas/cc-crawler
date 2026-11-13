@@ -34,6 +34,7 @@ import datetime
 import glob
 import gzip
 import hashlib
+import http.client
 import io
 import json
 import math
@@ -138,6 +139,7 @@ for _h, _n in BIG_HOSTS.items():
 
 def get(u, timeout=40):
     """(status, final url, content type, bytes); raises on network errors."""
+    u = quote(u, safe=":/?#[]@!$&'()*+,;=%~")  # spaces and other raw characters in file names
     with _locks[urlparse(u).netloc.lower()]:
         req = urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "*/*"})
         try:
@@ -328,7 +330,7 @@ def fetch_one(tid, kind, link, fetch_url, raw_dir):
     for i, (via, u, ts) in enumerate(tries):
         try:
             st, final, ctype, body = get(u)
-        except (urllib.error.URLError, OSError, ValueError) as e:
+        except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as e:
             st, final, ctype, body = None, u, "", b""
             rec["error"] = f"{type(e).__name__}: {e}"[:200]
         rec.update(via=via, fetch_url=u, archived_at=ts, http_status=st, final_url=final if final != u else "",
@@ -381,7 +383,8 @@ def fetch(args):
                     done[d["track_id"]] = d
     else:
         done = {}
-    todo = [t for t in sorted(links) if t not in done]
+    # Hash order mixes hosts, so the workers don't all wait on one host's limit.
+    todo = sorted((t for t in links if t not in done), key=lambda t: hashlib.md5(t.encode()).hexdigest())
     if args.limit:
         todo = todo[:args.limit]
     print(f"{len(links):,} fetchable tracks; {len(done):,} already fetched; fetching {len(todo):,}", file=sys.stderr)
@@ -397,7 +400,11 @@ def fetch(args):
                     "error": "not fetched: out of time (the next run with --existing fetches it)", "lines": []}
         r = first_link[tid]
         _, fu = track_id(r["kind"], r["link"])
-        return fetch_one(tid, r["kind"], r["link"], fu, args.raw_dir)
+        try:
+            return fetch_one(tid, r["kind"], r["link"], fu, args.raw_dir)
+        except Exception as e:  # noqa: BLE001 - one odd link must not end the run
+            return {"track_id": tid, "kind": r["kind"], "link": r["link"], "fetch_url": fu, "via": "",
+                    "error": f"{type(e).__name__}: {e}"[:200], "lines": []}
 
     n = collections.Counter()
     with gzip.open(args.out, "wt") as o, cf.ThreadPoolExecutor(args.workers) as ex:
