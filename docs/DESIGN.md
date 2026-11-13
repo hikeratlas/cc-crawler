@@ -1904,6 +1904,24 @@ some connections): 211 ok, 5 moved with their content, 9 http-only; stale:
 blocked, 33 connection or timeout failures (proxy) awaiting a second run.
 About 1 in 8 links shown is stale.
 
+First full run (link-status-run-1, 2026-11-12): 155,784 of 190,444 hike pages
+(one partition timed out, see below). ok 66.4% (plus 1.2% moved with their
+content), http_only 2.1%; stale 14.2%: gone 7.6%, domain gone 4.2%,
+moved_away 1.3% (mostly domains taken over by slots/casino sites:
+salixsostenible.com, angkatotoid.org, topglobalgacor.net...), to_home 0.6%,
+private 0.3% (Blogger blogs redirecting to Google sign-in), parked 0.2%,
+soft404; unknown 16% (blocked 10.3%; connection, timeout, TLS and server
+failures awaiting a second run). Spot check of ~14 per stale reason: right,
+except the soft-404 title rule matching elevations ("Cleveland Peak |
+13,404'"), now fixed. In basemap's routes build: 22,230 linked pages left out
+as gone, 28,518 linked at their final URL (mostly http -> https).
+
+The timed-out partition held hikearizona.com and 14ers.com (12,000 pages) in
+sorted order: its 32 workers queued behind one site's 2-request limit. Plan
+now puts the biggest sites first into the emptiest partition and
+round-robins sites within each; merge keeps the previous status of pages a
+run didn't reach.
+
 ## Tracks (2026-11-12, #82)
 
 Hike pages link their GPS tracks, and a track says which way a page went far
