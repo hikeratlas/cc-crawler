@@ -64,7 +64,7 @@ PLACEHOLDER = re.compile(r"(^welcome .*(bluehost|hostgator|godaddy|siteground|dr
                          r"^coming soon$|under construction|site not found|unknown domain)", re.I)
 PRIVATE = re.compile(r"(this site is private|this blog is open to invited readers only|"
                      r"protected blog|log in to see this site|this content is password protected)", re.I)
-SOFT404 = re.compile(r"(page not found|not found\b|\b404\b|page (?:you requested )?(?:could not|cannot|can.t) be found|"
+SOFT404 = re.compile(r"(page not found|not found\b|(?<![\d,.])404(?![\d,.'’])|page (?:you requested )?(?:could not|cannot|can.t) be found|"
                      r"page you were looking for in this blog does not exist|nothing (?:was )?found|"
                      r"this page doesn.t exist|post not found)", re.I)
 BLOCKED_TITLE = re.compile(r"(just a moment|attention required|bot verification|access denied|are you a robot|"
@@ -176,12 +176,32 @@ def read_tsv(path):
         yield from csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE)
 
 
+def interleave(urls):
+    """Round-robin across hosts: the workers spread over many sites instead of
+    queueing behind one site's 2-request limit."""
+    by = collections.defaultdict(list)
+    for u in urls:
+        by[host(u)].append(u)
+    queues = sorted(by.values(), key=lambda q: (-len(q), q[0]))
+    out = []
+    for i in range(max((len(q) for q in queues), default=0)):
+        out += [q[i] for q in queues if i < len(q)]
+    return out
+
+
 def plan(args):
     urls = sorted({r["url"] for r in read_tsv(args.hikes)})
     os.makedirs(args.out_dir, exist_ok=True)
-    parts = [[] for _ in range(args.partitions)]
+    # Each site in one partition; the biggest sites first, each into the
+    # partition with the fewest pages so far (two 5,000-page sites in one
+    # partition outlast the job's time limit).
+    by = collections.defaultdict(list)
     for u in urls:
-        parts[int(hashlib.md5(host(u).encode()).hexdigest(), 16) % args.partitions].append(u)
+        by[host(u)].append(u)
+    parts = [[] for _ in range(args.partitions)]
+    for h in sorted(by, key=lambda h: (-len(by[h]), hashlib.md5(h.encode()).hexdigest())):
+        min(parts, key=len).extend(by[h])
+    parts = [interleave(p) for p in parts]
     for i, p in enumerate(parts):
         with open(os.path.join(args.out_dir, f"part-{i}.txt"), "w") as f:
             f.write("\n".join(p) + "\n")
@@ -224,6 +244,13 @@ def merge(args):
                     r["status"] = "unknown"
             n[f"{r['status']}:{r['reason']}" if r["reason"] else r["status"]] += 1
             out.append(r)
+    # Pages this run didn't reach (a partition that ran out of time) keep
+    # their previous status.
+    seen = {r["url"] for r in out}
+    carried = [r for u, r in prev.items() if u not in seen]
+    for r in carried:
+        n[f"{r['status']}:{r['reason']}" if r["reason"] else r["status"]] += 1
+    out += carried
     with gzip.open(args.out, "wt") as o:
         w = csv.DictWriter(o, fieldnames=COLS, delimiter="\t", quoting=csv.QUOTE_NONE, escapechar="\\",
                            lineterminator="\n", extrasaction="ignore")
@@ -231,7 +258,8 @@ def merge(args):
         for r in out:
             w.writerow(r)
     total = len(out)
-    lines = ["# Link check", "", f"{total:,} hike pages checked on the live web.", "",
+    lines = ["# Link check", "", f"{total - len(carried):,} hike pages checked on the live web"
+             + (f"; {len(carried):,} not reached this run keep the previous run's status." if carried else "."), "",
              "| status | reason | pages | share |", "|---|---|---:|---:|"]
     for k, v in n.most_common():
         s, _, reason = k.partition(":")
