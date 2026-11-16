@@ -1849,7 +1849,11 @@ other posts' thumbnails.
   routes build) fetches each photo once and checks it is a photo (300x200+,
   aspect 0.4-2.6, not blank). It writes a 320 px WebP to
   `routes/<namespace>/thumbs/<sha1 of the photo URL>.webp` and replaces `img`
-  with `thumb`. Thumbnails already on R2 aren't fetched again.
+  with `thumb`. Thumbnails already on R2 aren't fetched again, and nor are
+  photos that failed in the last 30 days (`--failed`, the previous run's
+  `failed.csv`, kept on R2 next to the thumbnails): ~3,700 a build failed
+  again each time, for ~20 new thumbnails, and took 5 of the routes merge
+  job's 15 minutes (basemap run 43768177079).
 
 Prototype, 400 route-linked personal reports: 271 have a content image and
 165 a caption-matched one (captions 89, alt 63, title 5, file 8). In a
