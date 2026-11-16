@@ -12,14 +12,22 @@ Thumbnails already uploaded (--existing, one hash per line) are not fetched
 again: the hash is of the photo's address, so a page keeps its thumbnail
 across builds.
 
-  python3 scripts/thumbs.py --bundle-dir reports/ --existing have.txt --out out/
+Nor are photos that failed in the last --retry-days (30) days (--failed, a
+CSV: hash,reason,last_tried,url): most fail the same way every time (gone,
+too small, a strip), and fetching them all again took most of a build's
+5 minutes here. Those pages go without a photo, as they did when it failed.
 
-Writes out/reports.json, out/reports.bin and out/thumbs/*.webp (new ones only).
-Needs Pillow.
+  python3 scripts/thumbs.py --bundle-dir reports/ --existing have.txt --failed failed.csv --out out/
+
+Writes out/reports.json, out/reports.bin, out/thumbs/*.webp (new ones only)
+and out/failed.csv: the photos still in the bundle without a thumbnail, each
+with when it was last tried. Needs Pillow.
 """
 import argparse
 import collections
 import concurrent.futures as cf
+import csv
+import datetime
 import gzip
 import hashlib
 import io
@@ -79,6 +87,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bundle-dir", required=True, help="reports.json and reports.bin from route_links.py")
     ap.add_argument("--existing", help="file of thumbnail hashes already uploaded, one per line")
+    ap.add_argument("--failed", help="CSV of photos that failed before (hash,reason,last_tried,url), from an earlier run's out/failed.csv")
+    ap.add_argument("--retry-days", type=int, default=30, help="try a failed photo again after this many days")
     ap.add_argument("--out", required=True)
     ap.add_argument("--workers", type=int, default=24)
     args = ap.parse_args()
@@ -91,8 +101,20 @@ def main():
     data = open(os.path.join(args.bundle_dir, index["bundle"]), "rb").read()
     parks = {pid: json.loads(gzip.decompress(data[o:o + n])) for pid, (o, n) in index["parks"].items()}
     urls = {p["img"] for d in parks.values() for v in d.values() for sec in v.values() for p in sec if p.get("img")}
-    todo = sorted(u for u in urls if key(u) not in have)
-    print(f"{len(urls):,} photos; {len(urls) - len(todo):,} already have thumbnails; fetching {len(todo):,}",
+    today = datetime.date.today()
+    failed = {}  # hash -> (reason, last tried)
+    if args.failed and os.path.exists(args.failed):
+        with open(args.failed, newline="") as f:
+            for row in csv.DictReader(f):
+                try:
+                    failed[row["hash"]] = (row["reason"], datetime.date.fromisoformat(row["last_tried"]))
+                except (KeyError, ValueError):
+                    pass  # a malformed row: that photo is just tried again
+    recent = {h for h, (_, when) in failed.items() if (today - when).days < args.retry_days}
+    missing = [u for u in urls if key(u) not in have]
+    todo = sorted(u for u in missing if key(u) not in recent)
+    print(f"{len(urls):,} photos; {len(urls) - len(missing):,} already have thumbnails; "
+          f"{len(missing) - len(todo):,} failed in the last {args.retry_days} days; fetching {len(todo):,}",
           file=sys.stderr)
 
     ok = {u for u in urls if key(u) in have}
@@ -107,15 +129,28 @@ def main():
             f.write(webp)
         return u, None
 
+    tried = {}  # url -> its failure, for this run's failures
     with cf.ThreadPoolExecutor(args.workers) as ex:
         for i, (u, err) in enumerate(ex.map(one, todo), 1):
             if err:
                 why[err] += 1
+                tried[u] = err
             else:
                 ok.add(u)
             if i % 500 == 0:
                 print(f"  {i:,}/{len(todo):,}", file=sys.stderr)
     print(f"thumbnails: {len(ok):,} of {len(urls):,} photos; failures {dict(why.most_common())}", file=sys.stderr)
+
+    # The photos without a thumbnail, for the next run: this run's failures
+    # tried today, and the recent ones it skipped as they were. Photos gone
+    # from the bundle are dropped.
+    with open(os.path.join(args.out, "failed.csv"), "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["hash", "reason", "last_tried", "url"])
+        for u in sorted(u for u in missing if u not in ok):
+            h = key(u)
+            reason, when = (tried[u], today) if u in tried else failed[h]
+            w.writerow([h, reason, when.isoformat(), u])
 
     # Rewrite the bundle: "thumb" for photos that made it, no "img" either way.
     shown = 0
